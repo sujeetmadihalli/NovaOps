@@ -8,9 +8,9 @@ from agent.orchestrator import AgentOrchestrator
 from api.slack_notifier import SlackNotifier
 import json
 
-def test_redis_oom_incident():
+def test_dummy_oom_incident():
     """
-    Test Case 1: Redis OOM Error Mitigation
+    Test Case 1: Dummy Service OOM Mitigation
     
     The Mock Aggregators are configured by default to return:
     - Logs: "OutOfMemoryError"
@@ -25,15 +25,15 @@ def test_redis_oom_incident():
     print("EVALUATION HARNESS: SIMULATING INCIDENT")
     print("=========================================")
     
-    # 1. Initialize strictly in mock mode for safety
-    agent = AgentOrchestrator(use_mock=True)
+    # 1. Initialize strictly in LIVE mode: Real infrastructure, Real AI Model
+    agent = AgentOrchestrator(mock_sensors=False, mock_llm=False)
     notifier = SlackNotifier(use_mock=True)
     
     # 2. Trigger the agent exactly how the PagerDuty Webhook would
     result = agent.run_incident_resolution(
-        alert_name="RedisMemorySaturation",
-        service_name="redis-cache-service",
-        namespace="prod"
+        alert_name="DummyServiceOOM",
+        service_name="dummy-service",
+        namespace="default"
     )
     
     print("\n--- LLM JSON RAW DECISION ---")
@@ -62,4 +62,4 @@ def test_redis_oom_incident():
         print(f"❌ FAIL: Agent failed to generate a plan. Reason: {result.get('reason')}")
         
 if __name__ == "__main__":
-    test_redis_oom_incident()
+    test_dummy_oom_incident()

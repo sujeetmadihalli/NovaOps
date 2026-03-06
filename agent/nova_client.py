@@ -1,4 +1,5 @@
 import boto3
+from dotenv import load_dotenv
 import json
 import logging
 import os
@@ -14,6 +15,10 @@ class NovaClient:
     def __init__(self, region: str = "us-east-1", model_id: str = "amazon.nova-pro-v1:0", use_mock: bool = False):
         self.model_id = model_id
         self.use_mock = use_mock
+        
+        # Load the newly created .env file automatically
+        load_dotenv()
+        
         try:
             self.client = boto3.client('bedrock-runtime', region_name=region)
         except Exception as e:

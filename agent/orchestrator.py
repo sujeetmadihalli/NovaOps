@@ -38,13 +38,18 @@ Available Tools:
 """
 
 class AgentOrchestrator:
-    def __init__(self, use_mock: bool = False):
-        self.use_mock = use_mock
-        self.llm = NovaClient(use_mock=use_mock)
-        self.logs_agg = LogsAggregator(use_mock=use_mock)
-        self.metrics_agg = MetricsAggregator(use_mock=use_mock)
-        self.k8s_agg = KubernetesStateAggregator(use_mock=use_mock)
-        self.git_agg = GithubHistoryAggregator(use_mock=use_mock)
+    def __init__(self, mock_sensors: bool = True, mock_llm: bool = False):
+        self.mock_sensors = mock_sensors
+        self.mock_llm = mock_llm
+        
+        # The LLM now defaults to hitting the real AWS API
+        self.llm = NovaClient(use_mock=self.mock_llm)
+        
+        # The Aggregators default to Mock so the Hackathon demo is easy to run
+        self.logs_agg = LogsAggregator(use_mock=self.mock_sensors)
+        self.metrics_agg = MetricsAggregator(use_mock=self.mock_sensors)
+        self.k8s_agg = KubernetesStateAggregator(use_mock=self.mock_sensors)
+        self.git_agg = GithubHistoryAggregator(use_mock=self.mock_sensors)
         self.rag = KnowledgeBaseRAG()
 
     def run_incident_resolution(self, alert_name: str, service_name: str, namespace: str = "default") -> Dict[str, Any]:
