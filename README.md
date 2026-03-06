@@ -78,12 +78,40 @@ The agent will pull the live Memory telemetry from Prometheus, identify the `dum
 ```text
 incident-agent/
 │
+├── .env                       # (User created) AWS Credentials for Nova
+├── requirements.txt           # Python dependencies (Chromadb, boto3, fastapi)
+├── start_demo.sh              # Bash script to port-forward localhost to Minikube
+├── Dockerfile                 # (Optional) Container build for the agent itself
+│
 ├── api/                       # FastApi Endpoints & Webhooks
-├── agent/                     # The AWS Bedrock LLM Brain and vector RAG
-├── aggregator/                # Context Extraction Pipeline (Prometheus, K8s, GitHub)
+│   ├── server.py              # PagerDuty webhook receiver (Trigger)
+│   └── slack_notifier.py      # Generates interactive Slack JSON payloads
+│
+├── agent/                     # The AWS Bedrock LLM Brain and RAG
+│   ├── knowledge_base.py      # ChromaDB Vector Store for Runbooks
+│   ├── nova_client.py         # AWS boto3 client connecting to Bedrock Nova Pro
+│   └── orchestrator.py        # The ReAct (Reason -> Act) Loop utilizing Nova
+│
+├── aggregator/                # Context Extraction Pipeline
+│   ├── github_history.py      # Interrogates GitHub API for recent commits
+│   ├── kubernetes_state.py    # Interrogates local Minikube for Pod crash events
+│   ├── logs.py                # Interrogates AWS CloudWatch (or local scrape) for errors
+│   └── metrics.py             # Queries local Prometheus for CPU/Memory saturation
+│
 ├── tools/                     # Safe Execution Sandbox for K8s remediation
-├── runbooks/                  # Markdown files acting as the Knowledge Base
-├── dummy-service/             # The intentional memory-leak microservice deployed to Minikube
+│   ├── k8s_actions.py         # Heavily constrained subset of minikube kubectl commands
+│   └── registry.py            # Maps Novas JSON intents to the Python functions
+│
+├── runbooks/                  # Markdown files acting as the initial Knowledge Base
+│   ├── dummy-service-oom.md   # Runbook mapping memory leaks to a "restart_pods" action
+│   └── redis-oom-error.md     # Runbook mapping OOM to a "rollback_deployment" action
+│
+├── dummy-service/             # The intentional vulnerable microservice
+│   ├── main.py                # Python FastAPI app with an explicit memory leak array
+│   ├── k8s.yaml               # Kubernetes Deployment and NodePort Service definition
+│   ├── Dockerfile             # Local docker build instructions
+│   └── requirements.txt       # Uses `prometheus_client` to expose metrics
+│
 └── evaluation_harness/        
-    └── test_agent_accuracy.py # End-to-end framework triggering the live agent
+    └── test_agent_accuracy.py # End-to-end trigger script demonstrating the live agent
 ```
