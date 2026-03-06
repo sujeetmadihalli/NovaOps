@@ -14,7 +14,7 @@ DUMMY_PID=$!
 echo "Port Forwards are running."
 echo "Prometheus: http://localhost:9090"
 echo "Dummy Service: http://localhost:8080"
-echo "To trigger the memory leak: curl http://localhost:8080/memory-leak"
+echo "Ready! In a new terminal, run: PYTHONPATH=. venv/bin/python evaluation_harness/multi_scenario_test.py"
 
 # Wait for Ctrl+C
 trap "kill $PROM_PID $DUMMY_PID" EXIT
