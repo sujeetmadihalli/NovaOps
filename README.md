@@ -107,7 +107,7 @@ Once running, the server is listening for incident payloads on `http://localhost
 
 ---
 
-## 🚀 Running the Live End-to-End Hackathon Demo
+##  Running the Live End-to-End Hackathon Demo
 
 For the ultimate presentation, you can run the entire agent against a **live local Kubernetes cluster** and **real Prometheus metrics**, connected directly to the **Amazon Nova API** in the cloud. We have prepared an intentionally vulnerable `dummy-service` inside a `minikube` cluster to demonstrate the ReAct loop in real time.
 
