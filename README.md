@@ -86,6 +86,27 @@ It will then output the final **JSON payload** demonstrating that the Amazon Nov
 
 ---
 
+## 🐳 Running via Docker (Hackathon Demo)
+
+For the easiest demonstration setup without managing local python environments, you can run NovaOps entirely within a Docker container. 
+
+The image is optimized (using `python:3.10-slim` and CPU-only ML wheels) to ensure it builds quickly.
+
+### 1. Build the Image
+```bash
+docker build -t novaops-agent .
+```
+
+### 2. Run the Container
+```bash
+# We map port 8000 to the host so the FastAPI webhook receiver is exposed
+docker run -p 8000:8000 novaops-agent
+```
+
+Once running, the server is listening for incident payloads on `http://localhost:8000`.
+
+---
+
 ## From Ghost Mode to Full Autonomy
 
 For enterprise adoption, **NovaOps** is designed for a phased rollout:
