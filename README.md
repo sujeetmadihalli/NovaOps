@@ -107,6 +107,49 @@ Once running, the server is listening for incident payloads on `http://localhost
 
 ---
 
+## 🚀 Running the Live End-to-End Hackathon Demo
+
+For the ultimate presentation, you can run the entire agent against a **live local Kubernetes cluster** and **real Prometheus metrics**, connected directly to the **Amazon Nova API** in the cloud. We have prepared an intentionally vulnerable `dummy-service` inside a `minikube` cluster to demonstrate the ReAct loop in real time.
+
+### 1. Prerequisites
+- `minikube` and `kubectl` installed
+- `helm` installed (to deploy the Prometheus monitoring stack)
+- An AWS Account with Bedrock access to the Amazon Nova Pro model.
+- Your AWS keys added to the `.env` file at the root of the project:
+  ```
+  AWS_ACCESS_KEY_ID=your_access_key
+  AWS_SECRET_ACCESS_KEY=your_secret_key
+  AWS_DEFAULT_REGION=us-east-1
+  ```
+
+### 2. Start the Demo Services
+Make sure your Minikube cluster is running (`minikube start`) and the dummy service + prometheus stack are deployed. 
+Run the provided bash script to start the local port forwards required for the agent to scrape the live cluster metrics:
+
+```bash
+./start_demo.sh
+```
+*(Leave this terminal window open in the background!)*
+
+### 3. Induce the Production Incident!
+In a new terminal, intentionally trigger the memory leak on the dummy victim application to simulate a massive usage spike:
+
+```bash
+curl http://localhost:8080/memory-leak
+# (Run this 2 or 3 times to guarantee a Prometheus OOM warning)
+```
+
+### 4. Wake up the Amazon Nova Agent
+Instantly execute the agent against the live infrastructure so it can deduce the root cause and propose the mitigation.
+
+```bash
+PYTHONPATH=. venv/bin/python evaluation_harness/test_agent_accuracy.py
+```
+
+The agent will pull the live CPU/Memory telemetry from Prometheus, identify the `dummy-service` saturation, retrieve the appropriate `dummy-service-oom.md` runbook from the Vector database, and generate an interactive "Ghost Mode" Slack payload proposing a safe `restart_pods` mitigation plan.
+
+---
+
 ## From Ghost Mode to Full Autonomy
 
 For enterprise adoption, **NovaOps** is designed for a phased rollout:
