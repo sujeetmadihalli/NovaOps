@@ -86,7 +86,7 @@ It will then output the final **JSON payload** demonstrating that the Amazon Nov
 
 ---
 
-## 🐳 Running via Docker (Hackathon Demo)
+## Running via Docker (Hackathon Demo)
 
 For the easiest demonstration setup without managing local python environments, you can run NovaOps entirely within a Docker container. 
 
