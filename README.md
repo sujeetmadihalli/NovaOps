@@ -12,7 +12,7 @@ NovaOps aggregates this context in milliseconds, reasons via a ReAct loop, and r
 
 The architecture is strictly separated into **Read (Observation)** and **Write (Execution)** boundaries to guarantee safety in production.
 
-1. **Event Gateway (`api/`)**: A FastAPI webhook receiver listening for PagerDuty or OpsGenie alerts.
+1. **Event Gateway (`api/`)**: A FastAPI webhook receiver listening for PagerDuty or OpsGenie alerts. By design, it relies on Prometheus to poll the cluster every 15 seconds. If a metric stays bad for a full 1 or 2 minutes, Prometheus finally pushes a Webhook to wake up the Agent. This deliberate delay prevents false alarms from triggering unnecessary incident responses.
 2. **Context Aggregators (`aggregator/`)**: Once triggered, these parallelized modules fetch the exact state of the world to build the Amazon Nova prompt payload:
    - **Logs**: OpenSearch/CloudWatch error and fatal traces.
    - **Metrics**: Prometheus/Datadog metric saturation (CPU, Memory, 5xx errors).
