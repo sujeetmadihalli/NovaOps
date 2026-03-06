@@ -8,7 +8,7 @@ NovaOps aggregates this context in milliseconds, reasons via a ReAct loop, and r
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 The architecture is strictly separated into **Read (Observation)** and **Write (Execution)** boundaries to guarantee safety in production.
 
@@ -25,7 +25,7 @@ The architecture is strictly separated into **Read (Observation)** and **Write (
 
 ---
 
-## 🗂️ Project Structure
+## Project Structure
 
 ```text
 incident-agent/
@@ -58,7 +58,7 @@ incident-agent/
 
 ---
 
-## 🚀 Running the Evaluation Harness
+## Running the Evaluation Harness
 
 To ensure the agent behaves properly and respects sandbox constraints, we use an evaluation harness that mocks a production PagerDuty incident. Currently, the harness mocks a **"Redis Out of Memory"** scenario.
 
@@ -86,7 +86,7 @@ It will then output the final **JSON payload** demonstrating that the Amazon Nov
 
 ---
 
-## 🛡️ From Ghost Mode to Full Autonomy
+## From Ghost Mode to Full Autonomy
 
 For enterprise adoption, **NovaOps** is designed for a phased rollout:
 - **Phase 1 (Shadow Mode)**: Live data is ingested, but the agent only posts its findings to Slack. Human engineers verify the logic.
