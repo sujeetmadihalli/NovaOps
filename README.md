@@ -4,7 +4,7 @@
 
 When an engineer is paged at 3 AM, MTTR (Mean Time to Resolution) is often severely delayed by the time it takes the human to orient themselves across Datadog, CloudWatch, GitHub, and Kubernetes dashboards.
 
-NovaOps aggregates this context in milliseconds, reasons via a ReAct loop, and resolves the issue automatically—or hands off a ready-to-execute plan via Slack.
+NovaOps aggregates this context in milliseconds, reasons via a ReAct loop, and resolves the issue automatically, or hands off a ready-to-execute plan via Slack.
 
 ---
 
