@@ -14,11 +14,32 @@ document.addEventListener('DOMContentLoaded', () => {
         pirContent.textContent = '';
     }
 
+    function renderMarkdown(text) {
+        return text
+            .split('\n')
+            .map(line => {
+                if (line.startsWith('## '))  return `<h2>${line.slice(3)}</h2>`;
+                if (line.startsWith('### ')) return `<h3>${line.slice(4)}</h3>`;
+                if (line === '---') return '<hr>';
+                // bold **text**
+                line = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+                // italic *text*
+                line = line.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+                if (line.startsWith('- [ ]')) return `<p class="pir-check">☐ ${line.slice(5)}</p>`;
+                if (line.startsWith('- [x]')) return `<p class="pir-check">☑ ${line.slice(5)}</p>`;
+                if (line.startsWith('- ') || line.startsWith('* ')) return `<p class="pir-bullet">• ${line.slice(2)}</p>`;
+                if (line.trim() === '') return '<br>';
+                return `<p>${line}</p>`;
+            })
+            .join('');
+    }
+
     function showPirContent(text) {
         pirLoading.style.display = 'none';
         pirContent.style.display = 'block';
         pirCopyBtn.style.display = 'inline-flex';
-        pirContent.textContent = text;
+        pirContent.innerHTML = renderMarkdown(text);
+        pirContent._rawText = text;
     }
 
     function closePirModal() {
@@ -30,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     pirModal.addEventListener('click', (e) => { if (e.target === pirModal) closePirModal(); });
 
     pirCopyBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(pirContent.textContent).then(() => {
+        navigator.clipboard.writeText(pirContent._rawText || pirContent.textContent).then(() => {
             pirCopyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
             setTimeout(() => {
                 pirCopyBtn.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Report';

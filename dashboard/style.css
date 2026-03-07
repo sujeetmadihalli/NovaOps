@@ -382,11 +382,23 @@ body {
 .pir-loading i { font-size: 2rem; color: var(--accent-purple); }
 
 .pir-content {
-    font-family: 'Inter', monospace; font-size: 0.875rem;
+    font-family: 'Inter', sans-serif; font-size: 0.875rem;
     line-height: 1.7; color: #c9d1d9;
-    white-space: pre-wrap; word-break: break-word;
-    margin: 0;
+    word-break: break-word; margin: 0;
 }
+.pir-content h2 {
+    font-size: 1.1rem; font-weight: 700; color: #e6edf3;
+    margin: 1rem 0 0.4rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.3rem;
+}
+.pir-content h3 {
+    font-size: 0.95rem; font-weight: 600; color: #79c0ff;
+    margin: 0.8rem 0 0.25rem;
+}
+.pir-content p { margin: 0.2rem 0; }
+.pir-content hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 0.75rem 0; }
+.pir-content strong { color: #e6edf3; font-weight: 600; }
+.pir-content em { color: #8b949e; font-style: italic; }
+.pir-check, .pir-bullet { padding-left: 0.5rem; }
 
 .pir-modal-footer {
     display: flex; justify-content: flex-end; align-items: center; gap: 0.75rem;

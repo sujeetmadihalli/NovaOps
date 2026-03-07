@@ -7,6 +7,7 @@ from typing import Any, Dict
 from agent.orchestrator import AgentOrchestrator
 from agent.pir_generator import PIRGenerator
 from agent.knowledge_base import KnowledgeBaseRAG
+from agent.pdf_generator import PIRPDFGenerator
 from api.slack_notifier import SlackNotifier
 from api.history_db import IncidentHistoryDB
 
@@ -30,6 +31,7 @@ notifier = SlackNotifier(use_mock=False)
 db = IncidentHistoryDB()
 pir_gen = PIRGenerator()
 kb = KnowledgeBaseRAG()
+pdf_gen = PIRPDFGenerator()
 
 class AlertPayload(BaseModel):
     alert_name: str
@@ -133,7 +135,9 @@ def generate_pir(incident_id: str):
     runbook = kb.search_relevant_runbook(f"{incident['alert_name']} {incident['service_name']}")
     report = pir_gen.generate(incident, runbook_content=runbook)
     db.save_pir(incident_id, report)
-    return {"status": "success", "incident_id": incident_id, "report": report}
+    pdf_path = pdf_gen.generate(incident_id, report)
+    logger.info(f"PIR PDF saved: {pdf_path}")
+    return {"status": "success", "incident_id": incident_id, "report": report, "pdf_path": pdf_path}
 
 
 @app.get("/api/incidents/{incident_id}/report")
