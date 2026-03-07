@@ -13,6 +13,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentPageSpan = document.getElementById('current-page');
     const totalPagesSpan = document.getElementById('total-pages');
 
+    // Tab Navigation UI
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const viewSections = document.querySelectorAll('.view-section');
+    const terminalOutput = document.getElementById('terminal-output');
+
     let allIncidents = [];
     let currentFilter = 'all';
     let currentSort = 'newest';
@@ -131,7 +136,83 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Bind events
+    // --- View 2: Live Logs Terminal ---
+    
+    // Simple ANSI to CSS parser for terminal colors
+    function formatAnsiLog(line) {
+        if (!line) return '';
+        
+        // Escape HTML first
+        let html = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        
+        // Replace ANSI color codes
+        html = html.replace(/\x1b\[0;31m/g, '<span class="ansi-red">')
+                   .replace(/\x1b\[0;32m/g, '<span class="ansi-green">')
+                   .replace(/\x1b\[0;33m/g, '<span class="ansi-yellow">')
+                   .replace(/\x1b\[0;34m/g, '<span class="ansi-blue">')
+                   .replace(/\x1b\[0;35m/g, '<span class="ansi-magenta">')
+                   .replace(/\x1b\[0;36m/g, '<span class="ansi-cyan">')
+                   .replace(/\x1b\[0m/g, '</span>');
+                   
+        return html;
+    }
+
+    async function fetchLogs() {
+        // Only fetch logs if the logs tab is actively visible to save bandwidth
+        if (!document.getElementById('logs-view').classList.contains('active')) return;
+        
+        try {
+            const response = await fetch('http://127.0.0.1:8000/api/logs');
+            if (response.ok) {
+                const result = await response.json();
+                
+                let htmlOutput = '';
+                result.logs.forEach(line => {
+                    htmlOutput += `<p>${formatAnsiLog(line)}</p>`;
+                });
+                
+                // Only update DOM if the content actually changed to prevent scroll jumping
+                if (terminalOutput.innerHTML !== htmlOutput) {
+                    const isScrolledToBottom = terminalOutput.scrollHeight - terminalOutput.clientHeight <= terminalOutput.scrollTop + 50;
+                    
+                    terminalOutput.innerHTML = htmlOutput || '<p>No logs found...</p>';
+                    
+                    // Auto-scroll to bottom if they were already at the bottom
+                    if (isScrolledToBottom) {
+                        terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Failed to fetch logs:', e);
+            terminalOutput.innerHTML = `<p class="ansi-red">Failed to connect to backend log stream.</p>`;
+        }
+    }
+
+    // --- Event Listeners ---
+
+    // Tab Switching
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            // Remove active classes
+            tabBtns.forEach(b => b.classList.remove('active'));
+            viewSections.forEach(v => v.classList.remove('active'));
+            
+            // Add to target
+            const targetBtn = e.currentTarget;
+            targetBtn.classList.add('active');
+            
+            const viewId = targetBtn.getAttribute('data-target');
+            document.getElementById(viewId).classList.add('active');
+            
+            if (viewId === 'logs-view') {
+                fetchLogs();
+                // Force scroll to bottom on first open
+                setTimeout(() => { terminalOutput.scrollTop = terminalOutput.scrollHeight; }, 100);
+            }
+        });
+    });
+
     refreshBtn.addEventListener('click', fetchIncidents);
 
     sortSelect.addEventListener('change', (e) => {
@@ -164,6 +245,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial load
     fetchIncidents();
     
-    // Auto-poll every 10 seconds for the demo
-    setInterval(fetchIncidents, 10000);
+    // Auto-poll every 5 seconds for the demo
+    setInterval(() => {
+        fetchIncidents();
+        fetchLogs();
+    }, 5000);
 });

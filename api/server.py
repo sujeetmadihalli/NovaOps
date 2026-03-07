@@ -83,6 +83,21 @@ def get_incident_history():
     """
     history = db.get_recent_incidents(limit=50)
     return {"status": "success", "count": len(history), "data": history}
+
+@app.get("/api/logs")
+def get_live_logs():
+    """
+    Reads the tail of the unified start_novaops.sh stream from the novaops.log buffer.
+    Serves the raw ANSI-colored terminal output directly to the UI Dashboard.
+    """
+    try:
+        from collections import deque
+        with open("novaops.log", "r", encoding="utf-8") as f:
+            # Grab the last 500 lines to prevent payload bloat
+            last_lines = deque(f, 500)
+        return {"status": "success", "logs": list(last_lines)}
+    except FileNotFoundError:
+        return {"status": "success", "logs": ["Waiting for novaops.log buffer to initialize..."]}
         
 @app.post("/webhook/pagerduty")
 async def pagerduty_webhook(payload: AlertPayload, background_tasks: BackgroundTasks):
