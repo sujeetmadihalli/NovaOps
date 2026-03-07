@@ -22,9 +22,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Setup components (using MOCK for safe local testing)
-agent = AgentOrchestrator(mock_sensors=True)
-notifier = SlackNotifier(use_mock=True)
+# Setup components for Production (Live K8s & Nova LLM)
+agent = AgentOrchestrator(mock_sensors=False)
+notifier = SlackNotifier(use_mock=False)
 db = IncidentHistoryDB()
 
 class AlertPayload(BaseModel):
