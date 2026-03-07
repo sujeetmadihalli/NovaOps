@@ -95,23 +95,27 @@ class KnowledgeBaseRAG:
     # ------------------------------------------------------------------ #
 
     def has_similar_runbook(self, alert_name: str, service_name: str) -> bool:
-        """Checks if a sufficiently similar runbook already exists to avoid duplicates."""
-        if not self._runbooks:
-            return False
+        """Checks if a runbook for this exact alert type already exists."""
+        # Deterministic check: does a file for this alert already exist?
+        safe_name = alert_name.lower().replace(" ", "-").replace("(", "").replace(")", "")
+        safe_name = "".join(c for c in safe_name if c.isalnum() or c == "-")
+        target_filename = f"pir-{safe_name}.md"
 
-        query = f"{alert_name} {service_name}"
-        query_tokens = self._tokenize(query)
-        scored = [(self._tfidf_score(query_tokens, rb), rb) for rb in self._runbooks]
-        scored.sort(key=lambda x: x[0], reverse=True)
+        for rb in self._runbooks:
+            if rb["filename"] == target_filename:
+                logger.info(f"Runbook already exists: '{target_filename}'. Skipping save.")
+                return True
 
-        best_score, best_rb = scored[0]
-        SIMILARITY_THRESHOLD = 0.05  # Tuned: TF-IDF scores are low, so 0.05 catches genuine dupes
+        # Also check the original runbooks by keyword overlap in filenames
+        alert_keywords = set(alert_name.lower().split())
+        for rb in self._runbooks:
+            fname_keywords = set(rb["filename"].replace(".md", "").replace("-", " ").split())
+            overlap = alert_keywords & fname_keywords
+            if len(overlap) >= 2:
+                logger.info(f"Existing runbook '{rb['filename']}' covers this alert (keywords: {overlap}). Skipping save.")
+                return True
 
-        if best_score >= SIMILARITY_THRESHOLD:
-            logger.info(f"Similar runbook already exists: '{best_rb['filename']}' (score={best_score:.4f}). Skipping save.")
-            return True
-
-        logger.info(f"No similar runbook found (best score={best_score:.4f}). Safe to save new runbook.")
+        logger.info(f"No existing runbook found for '{alert_name}'. Safe to save.")
         return False
 
     def save_as_runbook(self, alert_name: str, service_name: str, pir_content: str) -> str:
