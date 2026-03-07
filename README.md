@@ -32,8 +32,8 @@ PagerDuty/OpsGenie Alert
         │
         ▼
 ┌─────────────────────────────────────────────────┐
-│              EVENT GATEWAY (FastAPI)             │
-│              api/server.py :8000                 │
+│              EVENT GATEWAY (FastAPI)            │
+│              api/server.py :8000                │
 └────────────────────┬────────────────────────────┘
                      │  Background Task
                      ▼
