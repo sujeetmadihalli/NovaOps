@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // New UI Elements
     const sortSelect = document.getElementById('sort-select');
-    const filterBtns = document.querySelectorAll('.filter-btn');
+    const filterBtns = document.querySelectorAll('[data-filter]');
     const paginationControls = document.getElementById('pagination-controls');
     const prevBtn = document.getElementById('prev-page');
     const nextBtn = document.getElementById('next-page');
@@ -349,8 +349,8 @@ document.addEventListener('DOMContentLoaded', () => {
     filterBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
             filterBtns.forEach(b => b.classList.remove('active'));
-            e.target.classList.add('active');
-            currentFilter = e.target.getAttribute('data-filter');
+            e.currentTarget.classList.add('active');
+            currentFilter = e.currentTarget.getAttribute('data-filter');
             currentPage = 1; // Reset to first page on new filter
             applyFiltersAndRender();
         });
