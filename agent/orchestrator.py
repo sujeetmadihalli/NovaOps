@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import Dict, Any
 
 from agent.nova_client import NovaClient
@@ -20,7 +21,9 @@ You will receive a massive dump of context including Recent Logs, Metrics, Kuber
 Analyze the context to determine the root cause of the outage.
 Do not hallucinate. If you are unsure, request to query more logs.
 
-You must output your response STRICTLY as a JSON object with the following structure:
+1. First, think step-by-step about the root cause inside <thinking> tags.
+2. Then, output your response STRICTLY as a JSON block wrapped in ```json ... ``` with the following structure:
+```json
 {
     "root_cause_analysis": "string explaining exactly why the service failed based on the logs and metrics",
     "action": {
@@ -28,6 +31,7 @@ You must output your response STRICTLY as a JSON object with the following struc
         "parameters": { ... tool specific kwargs ... }
     }
 }
+```
 
 Available Tools:
 1. `rollback_deployment` - Rolls back a recent bad code change constraint. (Params: service_name)
@@ -36,6 +40,8 @@ Available Tools:
 4. `query_more_logs` - Fetches older logs if current context is insufficient. (Params: service_name, minutes_back)
 5. `noop_require_human` - If the situation is too complex or requires database manipulation, use this tool to safely hand off.
 """
+
+VALID_TOOLS = ["rollback_deployment", "scale_deployment", "restart_pods", "query_more_logs", "noop_require_human"]
 
 class AgentOrchestrator:
     def __init__(self, mock_sensors: bool = True, mock_llm: bool = False):
@@ -55,6 +61,7 @@ class AgentOrchestrator:
     def run_incident_resolution(self, alert_name: str, service_name: str, namespace: str = "default") -> Dict[str, Any]:
         """
         The main ReAct loop: Observe -> Reason -> Act.
+        With fortified retry loops and self-correction.
         """
         logger.info(f"Waking up agent for alert: {alert_name} on service {service_name}")
         
@@ -66,7 +73,7 @@ class AgentOrchestrator:
         commits = self.git_agg.get_recent_commits("org", "repo")
         runbook = self.rag.search_relevant_runbook(alert_name)
         
-        context_payload = f"""
+        base_context = f"""
         --- ALERT ---
         Name: {alert_name}
         Service: {service_name}
@@ -87,28 +94,58 @@ class AgentOrchestrator:
         {json.dumps(logs, indent=2)}
         """
         
-        # 2. REASON: Pass to Nova
+        # 2. REASON: Send to Nova with Self-Correction Retry Loop
         logger.info("Sending 300K context to Amazon Nova...")
-        response = self.llm.invoke(SYSTEM_PROMPT, context_payload)
         
-        if not response["success"]:
-            logger.error(f"LLM failure: {response.get('error')}")
-            return {"status": "failed", "reason": "LLM Invocation Error"}
+        MAX_RETRIES = 3
+        current_context = base_context
+        
+        for attempt in range(MAX_RETRIES):
+            response = self.llm.invoke(SYSTEM_PROMPT, current_context)
             
-        try:
-            # We enforce JSON output in the prompt
-            decision = json.loads(response["content"])
-            logger.info(f"Agent Hypothesis: {decision.get('root_cause_analysis')}")
-            logger.info(f"Agent proposed action: {decision.get('action')}")
+            if not response["success"]:
+                logger.error(f"LLM failure on attempt {attempt+1}: {response.get('error')}")
+                if attempt == MAX_RETRIES - 1:
+                    return {"status": "failed", "reason": "LLM Invocation Error"}
+                continue
+                
+            raw_content = response["content"]
             
-            # In purely autonomous mode, we would call the tool execution here.
-            # However, for our architecture we will pass this plan to the Slack Ghost Mode notifier.
-            return {
-                "status": "plan_ready",
-                "analysis": decision.get("root_cause_analysis"),
-                "proposed_action": decision.get("action")
-            }
-            
-        except json.JSONDecodeError:
-            logger.error("LLM did not return proper JSON.")
-            return {"status": "failed", "reason": "Malformed LLM output"}
+            # Extract JSON block using regex to ignore any <thinking> tags
+            json_match = re.search(r'```json\s*(\{.*?\})\s*```', raw_content, re.DOTALL)
+            if not json_match:
+                # Try generic matching if they didn't wrap it perfectly
+                json_match = re.search(r'(\{.*\})', raw_content, re.DOTALL)
+                
+            if not json_match:
+                logger.warning(f"Attempt {attempt+1}: LLM did not output a recognizable JSON block. Retrying...")
+                current_context += f"\n\nERROR IN PREVIOUS ATTEMPT: You did not output valid JSON. Please provide ONLY valid JSON wrapped in ```json tags."
+                continue
+                
+            try:
+                decision = json.loads(json_match.group(1))
+                
+                # Strict Tool Validation Sandbox
+                action = decision.get("action", {})
+                tool = action.get("tool")
+                
+                if tool not in VALID_TOOLS:
+                    logger.warning(f"Attempt {attempt+1}: LLM hallucinated invalid tool '{tool}'. Forcing self-correction.")
+                    current_context += f"\n\nERROR IN PREVIOUS ATTEMPT: You chose an invalid tool '{tool}'. You MUST choose from this exact list: {VALID_TOOLS}."
+                    continue
+                    
+                logger.info(f"Agent Hypothesis: {decision.get('root_cause_analysis')}")
+                logger.info(f"Agent proposed action: {action}")
+                
+                return {
+                    "status": "plan_ready",
+                    "analysis": decision.get("root_cause_analysis"),
+                    "proposed_action": action
+                }
+                
+            except json.JSONDecodeError as e:
+                logger.warning(f"Attempt {attempt+1}: JSON parsing failed ({e}). Retrying...")
+                current_context += f"\n\nERROR IN PREVIOUS ATTEMPT: Your JSON was malformed. Error details: {e}. Please output strict valid JSON."
+                
+        logger.error(f"Agent failed to produce a valid action after {MAX_RETRIES} attempts.")
+        return {"status": "failed", "reason": "Max retries exceeded evaluating malformed LLM responses."}
