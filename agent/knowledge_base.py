@@ -94,36 +94,37 @@ class KnowledgeBaseRAG:
     #  Self-Learning: PIR → Runbook Auto-Save                              #
     # ------------------------------------------------------------------ #
 
+    def _make_runbook_filename(self, alert_name: str, service_name: str) -> str:
+        """Generate a deterministic filename from alert + service."""
+        raw = f"{service_name}-{alert_name}"
+        safe = raw.lower().replace(" ", "-").replace("(", "").replace(")", "")
+        safe = "".join(c for c in safe if c.isalnum() or c == "-")
+        return f"pir-{safe}.md"
+
     def has_similar_runbook(self, alert_name: str, service_name: str) -> bool:
-        """Checks if a runbook for this exact alert type already exists."""
-        # Deterministic check: does a file for this alert already exist?
-        safe_name = alert_name.lower().replace(" ", "-").replace("(", "").replace(")", "")
-        safe_name = "".join(c for c in safe_name if c.isalnum() or c == "-")
-        target_filename = f"pir-{safe_name}.md"
+        """Checks if a runbook for this exact alert+service combination already exists."""
+        target_filename = self._make_runbook_filename(alert_name, service_name)
 
         for rb in self._runbooks:
             if rb["filename"] == target_filename:
                 logger.info(f"Runbook already exists: '{target_filename}'. Skipping save.")
                 return True
 
-        # Also check the original runbooks by keyword overlap in filenames
-        alert_keywords = set(alert_name.lower().split())
+        # Also check original runbooks by keyword overlap (alert + service keywords vs filename)
+        alert_keywords = set((alert_name + " " + service_name).lower().split())
         for rb in self._runbooks:
             fname_keywords = set(rb["filename"].replace(".md", "").replace("-", " ").split())
             overlap = alert_keywords & fname_keywords
-            if len(overlap) >= 2:
+            if len(overlap) >= 3:
                 logger.info(f"Existing runbook '{rb['filename']}' covers this alert (keywords: {overlap}). Skipping save.")
                 return True
 
-        logger.info(f"No existing runbook found for '{alert_name}'. Safe to save.")
+        logger.info(f"No existing runbook found for '{alert_name}' on '{service_name}'. Safe to save.")
         return False
 
     def save_as_runbook(self, alert_name: str, service_name: str, pir_content: str) -> str:
         """Saves a PIR as a new runbook markdown file and re-indexes the TF-IDF corpus."""
-        # Create a URL-safe filename from the alert name
-        safe_name = alert_name.lower().replace(" ", "-").replace("(", "").replace(")", "")
-        safe_name = "".join(c for c in safe_name if c.isalnum() or c == "-")
-        filename = f"pir-{safe_name}.md"
+        filename = self._make_runbook_filename(alert_name, service_name)
         filepath = os.path.join(self.runbooks_dir, filename)
 
         with open(filepath, "w", encoding="utf-8") as f:
