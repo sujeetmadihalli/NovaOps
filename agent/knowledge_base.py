@@ -105,7 +105,7 @@ class KnowledgeBaseRAG:
         scored.sort(key=lambda x: x[0], reverse=True)
 
         best_score, best_rb = scored[0]
-        SIMILARITY_THRESHOLD = 0.15  # Tuned: above this means a strong match already exists
+        SIMILARITY_THRESHOLD = 0.05  # Tuned: TF-IDF scores are low, so 0.05 catches genuine dupes
 
         if best_score >= SIMILARITY_THRESHOLD:
             logger.info(f"Similar runbook already exists: '{best_rb['filename']}' (score={best_score:.4f}). Skipping save.")
