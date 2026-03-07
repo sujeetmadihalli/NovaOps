@@ -28,10 +28,14 @@ def run_test_scenario(scenario_name: str, mock_data: dict, expected_tool: str):
     agent.git_agg._get_mock_commits = lambda *args: mock_data['github']
     
     # Overwrite the RAG to ensure it reads the correct runbook for the scenario context
-    if "redis" in scenario_name.lower():
-        agent.rag.search_relevant_runbook = lambda query: "If an OOM event occurs immediately after a deployment, mitigate immediately using the rollback_deployment tool."
-    else:
+    if "redis oom" in scenario_name.lower() or "cache bloat" in scenario_name.lower():
+        agent.rag.search_relevant_runbook = lambda query: "If an OOM event occurs immediately after a deployment, mitigate by rolling back. IF NO DEPLOYMENT OCCURRED, cache is bloated and you should restart the pods to flush the heap."
+    elif "surge" in scenario_name.lower():
         agent.rag.search_relevant_runbook = lambda query: "If traffic surges and liveness probes fail, mitigate by using the scale_deployment tool."
+    elif "deadlock" in scenario_name.lower():
+        agent.rag.search_relevant_runbook = lambda query: "If threads are deadlocked and CPU is at 0%, but the service is unresponsive, restart the pods to clear the race condition."
+    elif "typo" in scenario_name.lower() or "database connection" in scenario_name.lower():
+        agent.rag.search_relevant_runbook = lambda query: "If the application refuses to start instantly after a deployment due to 'ConnectionRefused' to the database, use rollback_deployment to undo the bad configuration."
     
     # 2. Trigger
     result = agent.run_incident_resolution(
@@ -75,13 +79,52 @@ def main():
         "logs": [{"timestamp": "Now", "message": "[ERROR] ThreadPoolExecutor exhausted. Rejecting requests."}],
         "github": [{"sha": "x9y8z7", "author": "dev", "message": "fix: typo in readme", "date": "3 days ago"}] # Unrelated commit
     }
+    
+    # ---------------------------------------------------------
+    # SCENARIO 3: THREAD DEADLOCK (ZERO CPU EXHAUSTION)
+    # ---------------------------------------------------------
+    # Should Restart Pods (Because scaling a deadlocked app just creates more deadlocked pods)
+    scenario_3 = {
+        "metrics": {"cpu_utilization": "0.1%", "memory_usage_mb": 200, "memory_limit_mb": 4096},
+        "k8s_events": [{"type": "Warning", "reason": "Unhealthy", "message": "Readiness probe failed", "timestamp": "Now"}],
+        "logs": [{"timestamp": "Now", "message": "[WARN] Thread 4 waiting to acquire lock held by Thread 2. [FATAL] Deadlock detected."}],
+        "github": [{"sha": "k3l4j5", "author": "dev", "message": "docs: update wiki", "date": "1 week ago"}]
+    }
+
+    # ---------------------------------------------------------
+    # SCENARIO 4: BAD CONFIG DEPLOYMENT (INSTANT CRASH)
+    # ---------------------------------------------------------
+    # Should Rollback (It is crashing, but restarting won't fix a hardcoded bad password)
+    scenario_4 = {
+        "metrics": {"cpu_utilization": "0%", "memory_usage_mb": 0, "memory_limit_mb": 4096},
+        "k8s_events": [{"type": "Warning", "reason": "CrashLoopBackOff", "message": "Back-off restarting failed container", "timestamp": "Now"}],
+        "logs": [{"timestamp": "Now", "message": "[FATAL] SQLException: Access Denied for user 'admin' (using password: NO)"}],
+        "github": [{"sha": "p0q1w2", "author": "sre", "message": "chore: update database connection string environment variables", "date": "2 mins ago"}]
+    }
+
+    # ---------------------------------------------------------
+    # SCENARIO 5: ORGANIC CACHE BLOAT OOM (NO DEPLOYMENT)
+    # ---------------------------------------------------------
+    # Should Restart Pods (Very similar to Scenario 1, but missing the bad commit. A rollback makes no sense here as the code is months old. Restarting flushes the cache memory.)
+    scenario_5 = {
+        "metrics": {"cpu_utilization": "Stable", "memory_usage_mb": 4096, "memory_limit_mb": 4096},
+        "k8s_events": [{"type": "Warning", "reason": "OOMKilling", "message": "Memory cgroup out of memory", "timestamp": "Now"}],
+        "logs": [{"timestamp": "Now", "message": "[FATAL] OutOfMemoryError: Java heap space"}],
+        "github": [{"sha": "z9x8c7", "author": "dev", "message": "feat: initial commit", "date": "4 months ago"}]
+    }
 
     print("STARTING BATCH EVALUATION...")
     print("Testing Amazon Nova's reasoning capabilities across diverse incident signatures.")
     
     run_test_scenario("Redis Bad Deployment Memory Leak", scenario_1, expected_tool="rollback_deployment")
-    time.sleep(2) # Give AWS API a breath
+    time.sleep(2) 
     run_test_scenario("Payment Service Traffic Surge", scenario_2, expected_tool="scale_deployment")
+    time.sleep(2)
+    run_test_scenario("Thread Deadlock Freeze", scenario_3, expected_tool="restart_pods")
+    time.sleep(2)
+    run_test_scenario("Bad DB Config Deployment Crash", scenario_4, expected_tool="rollback_deployment")
+    time.sleep(2)
+    run_test_scenario("Organic Cache Bloat OOM", scenario_5, expected_tool="restart_pods")
 
 if __name__ == "__main__":
     main()
