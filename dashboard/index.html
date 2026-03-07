@@ -52,10 +52,13 @@
                 </div>
             </section>
 
-            <!-- Right Column: Incident Feed -->
+            <!-- Right Column: Feed & Logs -->
             <section class="incident-feed">
                 <div class="feed-header">
-                    <h2>Recent Incident Resolutions</h2>
+                    <div class="feed-tabs">
+                        <h2 class="tab-btn active" data-target="feed-view">Incident Resolutions</h2>
+                        <h2 class="tab-btn" data-target="logs-view">Live Telemetry Logs <span class="live-dot"></span></h2>
+                    </div>
                     <div class="feed-actions">
                         <select id="sort-select" class="glass-select">
                             <option value="newest">Newest First</option>
@@ -73,19 +76,41 @@
                     <button class="filter-btn" data-filter="noop_require_human">Manual</button>
                 </div>
                 
-                <div id="incidents-container" class="incidents-list">
-                    <!-- Incidents will be injected here by JS -->
-                    <div class="loading-state">
-                        <i class="fa-solid fa-circle-notch fa-spin"></i>
-                        <p>Polling Event Gateway...</p>
+                <!-- View 1: Incidents Feed -->
+                <div id="feed-view" class="view-section active">
+                    <div id="incidents-container" class="incidents-list">
+                        <!-- Incidents will be injected here by JS -->
+                        <div class="loading-state">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i>
+                            <p>Polling Event Gateway...</p>
+                        </div>
+                    </div>
+
+                    <div class="pagination-controls" id="pagination-controls" style="display: none;">
+                        <button id="prev-page" class="ghost-btn" disabled><i class="fa-solid fa-chevron-left"></i> Prev</button>
+                        <div class="page-info">Page <span id="current-page">1</span> of <span id="total-pages">1</span></div>
+                        <button id="next-page" class="ghost-btn" disabled>Next <i class="fa-solid fa-chevron-right"></i></button>
                     </div>
                 </div>
 
-                <div class="pagination-controls" id="pagination-controls" style="display: none;">
-                    <button id="prev-page" class="ghost-btn" disabled><i class="fa-solid fa-chevron-left"></i> Prev</button>
-                    <div class="page-info">Page <span id="current-page">1</span> of <span id="total-pages">1</span></div>
-                    <button id="next-page" class="ghost-btn" disabled>Next <i class="fa-solid fa-chevron-right"></i></button>
+                <!-- View 2: Live Logs Terminal -->
+                <div id="logs-view" class="view-section">
+                    <div class="terminal-container">
+                        <div class="terminal-header">
+                            <div class="terminal-dots">
+                                <span></span><span></span><span></span>
+                            </div>
+                            <div class="terminal-title">bash - start_novaops.sh</div>
+                        </div>
+                        <div class="terminal-body" id="terminal-output">
+                            <div class="loading-state">
+                                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                                <p>Tailing novaops.log buffer...</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+                
             </section>
         </main>
     </div>

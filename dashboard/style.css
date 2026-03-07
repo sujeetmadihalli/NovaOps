@@ -152,6 +152,7 @@ body {
     margin-bottom: 0.25rem;
     background: linear-gradient(90deg, #fff, #8b949e);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 .stat-subtitle { font-size: 0.875rem; color: var(--text-secondary); }
@@ -168,6 +169,59 @@ body {
     align-items: center;
     padding: 0 0.5rem;
 }
+
+/* Tab Navigation */
+.feed-tabs { display: flex; gap: 1.5rem; }
+.tab-btn {
+    font-size: 1.25rem; font-weight: 500; color: var(--text-secondary);
+    cursor: pointer; position: relative; transition: color 0.3s ease;
+    padding-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;
+}
+.tab-btn:hover { color: var(--text-primary); }
+.tab-btn.active { color: var(--text-primary); font-weight: 600; }
+.tab-btn.active::after {
+    content: ''; position: absolute; bottom: 0; left: 0;
+    width: 100%; height: 2px; background: var(--accent-blue);
+    border-radius: 2px;
+}
+.live-dot {
+    width: 8px; height: 8px; background: var(--accent-green);
+    border-radius: 50%; opacity: 0;
+}
+.tab-btn.active .live-dot { animation: pulse 2s infinite; opacity: 1; }
+
+.view-section { display: none; }
+.view-section.active { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Terminal Window */
+.terminal-container {
+    background: #0d1117; border: 1px solid var(--glass-border);
+    border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;
+    height: 600px;
+}
+.terminal-header {
+    background: #161b22; padding: 0.75rem 1rem;
+    display: flex; align-items: center; border-bottom: 1px solid var(--glass-border);
+}
+.terminal-dots { display: flex; gap: 6px; }
+.terminal-dots span { width: 12px; height: 12px; border-radius: 50%; }
+.terminal-dots span:nth-child(1) { background: #ff5f56; }
+.terminal-dots span:nth-child(2) { background: #ffbd2e; }
+.terminal-dots span:nth-child(3) { background: #27c93f; }
+.terminal-title { flex-grow: 1; text-align: center; color: var(--text-secondary); font-size: 0.8rem; font-family: monospace; opacity: 0.7; }
+
+.terminal-body {
+    padding: 1rem; overflow-y: auto; font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.85rem; line-height: 1.6; color: #e6edf3; flex-grow: 1;
+}
+.terminal-body p { margin: 0; white-space: pre-wrap; word-break: break-all; }
+.terminal-body .ansi-red { color: #ff7b72; }
+.terminal-body .ansi-green { color: #3fb950; }
+.terminal-body .ansi-yellow { color: #d29922; }
+.terminal-body .ansi-blue { color: #58a6ff; }
+.terminal-body .ansi-magenta { color: #bc8cff; }
+.terminal-body .ansi-cyan { color: #39c5cf; }
 
 .icon-btn {
     background: transparent; border: 1px solid var(--glass-border);
