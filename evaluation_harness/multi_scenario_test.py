@@ -9,6 +9,36 @@ from api.slack_notifier import SlackNotifier
 from api.history_db import IncidentHistoryDB
 import json
 import time
+import sys
+
+class TeeLogger:
+    """Mirrors stdout/stderr to the novaops.log buffer with color tags for the Dashboard."""
+    def __init__(self, stream, filename, prefix=""):
+        self.terminal = stream
+        self.log_file = open(filename, "a", encoding="utf-8")
+        self.prefix = prefix
+        self.is_new_line = True
+
+    def write(self, message):
+        self.terminal.write(message)
+        formatted = ""
+        for char in message:
+            if self.is_new_line and char != '\n':
+                formatted += self.prefix
+                self.is_new_line = False
+            formatted += char
+            if char == '\n':
+                self.is_new_line = True
+        self.log_file.write(formatted)
+        self.log_file.flush()
+
+    def flush(self):
+        self.terminal.flush()
+        self.log_file.flush()
+
+sys.stdout = TeeLogger(sys.stdout, "novaops.log", prefix="\033[0;32m[Nova-Agent]\033[0m ")
+sys.stderr = TeeLogger(sys.stderr, "novaops.log", prefix="\033[0;31m[Agent-Log]\033[0m ")
+
 
 def run_test_scenario(scenario_name: str, mock_data: dict, expected_tool: str):
     """
