@@ -44,17 +44,20 @@ This repository is pre-configured to run a live demonstration on your local mach
   pip install -r requirements.txt
   ```
 
-### 2. Start the Demo Infrastructure
+### 2. Start the NovaOps Architecture (Single Command)
 Make sure your Minikube cluster is running (`minikube start`) and the dummy service + prometheus stack are deployed. 
-Run the provided bash script to start the local port forwards required for the agent to scrape the live cluster metrics:
+
+To launch the entire platform, simply run the unified launch script. It will automatically background the K8s port-forwards, the FastAPI Event Gateway, and the UI Dashboard Engine into a single terminal stream:
 
 ```bash
-./start_demo.sh
+./start_novaops.sh
 ```
 *(Leave this terminal window open in the background!)*
 
+You can now view the **Live Dashboard at http://localhost:8081**
+
 ### 3. Trigger the Autonomous Multi-Scenario Edge Cases
-In a new terminal, run the batch testing suite. This script will automatically inject completely opposite incidents (e.g., Memory Leaks vs. Traffic Surges) to demonstrate the agent's real-time deductive reasoning:
+In a new terminal, run the batch testing suite. This script will automatically inject completely opposite incidents (e.g., Memory Leaks vs. Traffic Surges) to demonstrate the agent's real-time deductive reasoning. The Dashboard UI will instantly populate as the AI resolves them:
 
 ```bash
 PYTHONPATH=. venv/bin/python evaluation_harness/multi_scenario_test.py
@@ -65,23 +68,8 @@ The agent will read the context telemetry, identify the correct root causes out 
 
 ---
 
-## Visualizing Artificial Reasoning (Web Dashboard)
-
-NovaOps ships with a sleek, responsive frontend Dashboard to visualize the agent's incident history, deductive reasoning, and metric win-rates over time.
-
-To launch the dashboard locally for the demo:
-1. Start the FastAPI backend to serve the SQLite history:
-   ```bash
-   venv/bin/uvicorn api.server:app --reload --port 8000
-   ```
-2. In a new terminal, serve the static HTML frontend:
-   ```bash
-   python3 -m http.server 8081 --directory dashboard
-   ```
-3. Navigate to `http://localhost:8081` in your browser.
-
-> [!TIP]
-> **Enterprise Architecture Note**: In a production AWS environment, this custom frontend is completely optional. NovaOps is designed to stream its JSON decision payloads natively into **Amazon DynamoDB** and **Amazon OpenSearch**. From there, SRE teams simply use **AWS Managed Grafana**, **AWS QuickSight**, or native **CloudWatch Dashboards** to render the analytics instantly without managing extra UI infrastructure.
+## The "Dead Man's Snitch" (Watchdog Alert)
+If the Amazon Nova LLM API becomes unreachable, or the Python reasoning execution loop encounters a fatal exception, the system is designed to gracefully degrade. The backend `server.py` webhook will catch the failure and instantly fire a hardcoded **"CRITICAL: NovaOps Autonomous Agent Offline"** alert to the Slack channel, ensuring human SRE intervention is paged immediately.
 
 ---
 

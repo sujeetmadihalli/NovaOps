@@ -41,30 +41,40 @@ def trigger_agent_loop(payload: AlertPayload):
     """
     logger.info(f"==== Starting Incident Resolution for {payload.incident_id} ====")
     
-    result = agent.run_incident_resolution(
-        alert_name=payload.alert_name,
-        service_name=payload.service_name,
-        namespace=payload.namespace
-    )
-    
-    if result.get("status") == "plan_ready":
-        # Log the incident to the Dashboard Database
-        db.log_incident(
-            incident_id=payload.incident_id,
-            service_name=payload.service_name,
+    try:
+        result = agent.run_incident_resolution(
             alert_name=payload.alert_name,
-            analysis=result.get("analysis"),
-            proposed_action=result.get("proposed_action")
+            service_name=payload.service_name,
+            namespace=payload.namespace
         )
         
-        # Hand off to Ghost Mode Slack to get human approval
+        if result.get("status") == "plan_ready":
+            # Log the incident to the Dashboard Database
+            db.log_incident(
+                incident_id=payload.incident_id,
+                service_name=payload.service_name,
+                alert_name=payload.alert_name,
+                analysis=result.get("analysis"),
+                proposed_action=result.get("proposed_action")
+            )
+            
+            # Hand off to Ghost Mode Slack to get human approval
+            notifier.send_incident_plan(
+                incident_id=payload.incident_id,
+                analysis=result.get("analysis"),
+                proposed_action=result.get("proposed_action")
+            )
+        else:
+            logger.error(f"Agent failed to formulate a plan: {result.get('reason')}")
+            
+    except Exception as e:
+        logger.critical(f"FATAL: Agent Orchestrator crashed entirely. Reason: {str(e)}")
+        # DEAD MAN'S SNITCH: AI is offline. Page humans.
         notifier.send_incident_plan(
             incident_id=payload.incident_id,
-            analysis=result.get("analysis"),
-            proposed_action=result.get("proposed_action")
+            analysis=f"⚠️ CRITICAL INFRASTRUCTURE ALERT ⚠️\nThe Autonomous AI Agent has suffered a fatal crash or the Amazon Nova LLM API is unreachable.\n\nException: {str(e)}\n\nThe self-healing pipeline is OFFLINE. Human SRE intervention is required immediately.",
+            proposed_action={"tool": "noop_require_human", "parameters": {}}
         )
-    else:
-        logger.error(f"Agent failed to formulate a plan: {result.get('reason')}")
         
 @app.get("/api/incidents")
 def get_incident_history():
