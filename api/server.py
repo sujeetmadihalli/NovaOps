@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 from agent.orchestrator import AgentOrchestrator
 from agent.pir_generator import PIRGenerator
+from agent.knowledge_base import KnowledgeBaseRAG
 from api.slack_notifier import SlackNotifier
 from api.history_db import IncidentHistoryDB
 
@@ -28,6 +29,7 @@ agent = AgentOrchestrator(mock_sensors=False)
 notifier = SlackNotifier(use_mock=False)
 db = IncidentHistoryDB()
 pir_gen = PIRGenerator()
+kb = KnowledgeBaseRAG()
 
 class AlertPayload(BaseModel):
     alert_name: str
@@ -106,7 +108,8 @@ def generate_pir(incident_id: str):
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
 
-    report = pir_gen.generate(incident)
+    runbook = kb.search_relevant_runbook(f"{incident['alert_name']} {incident['service_name']}")
+    report = pir_gen.generate(incident, runbook_content=runbook)
     db.save_pir(incident_id, report)
     return {"status": "success", "incident_id": incident_id, "report": report}
 
