@@ -23,7 +23,7 @@ app.add_middleware(
 )
 
 # Setup components (using MOCK for safe local testing)
-agent = AgentOrchestrator(use_mock=True)
+agent = AgentOrchestrator(mock_sensors=True)
 notifier = SlackNotifier(use_mock=True)
 db = IncidentHistoryDB()
 
