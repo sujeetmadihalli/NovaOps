@@ -177,6 +177,42 @@ body {
 }
 .icon-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
 
+.feed-actions { display: flex; align-items: center; gap: 0.75rem; }
+
+.glass-select {
+    background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border);
+    color: var(--text-primary); padding: 0.4rem 0.75rem; border-radius: 8px;
+    font-family: inherit; font-size: 0.875rem; cursor: pointer;
+    outline: none; transition: all 0.2s ease;
+}
+.glass-select:hover { border-color: rgba(255,255,255,0.15); }
+.glass-select option { background: var(--bg-color); color: var(--text-primary); }
+
+.feed-filters {
+    display: flex; gap: 0.5rem; padding: 0 0.5rem 0.5rem 0.5rem;
+    overflow-x: auto; scrollbar-width: none;
+}
+.feed-filters::-webkit-scrollbar { display: none; }
+
+.filter-btn {
+    background: transparent; border: 1px solid var(--glass-border);
+    color: var(--text-secondary); padding: 0.4rem 1rem; border-radius: 20px;
+    font-size: 0.8rem; cursor: pointer; transition: all 0.2s ease;
+    white-space: nowrap; font-family: inherit; font-weight: 500;
+}
+.filter-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+.filter-btn.active {
+    background: rgba(47,129,247,0.15); border-color: rgba(47,129,247,0.4);
+    color: var(--accent-blue);
+}
+
+.pagination-controls {
+    display: flex; justify-content: space-between; align-items: center;
+    border-top: 1px solid var(--glass-border); padding-top: 1.5rem; margin-top: 0.5rem;
+}
+.page-info { font-size: 0.875rem; color: var(--text-secondary); }
+.ghost-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
 .incidents-list { display: flex; flex-direction: column; gap: 1rem; }
 
 /* Individual Incident Card Styling */
