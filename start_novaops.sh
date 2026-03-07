@@ -16,6 +16,11 @@ echo -e "${BLUE}==============================================${NC}"
 
 # Pre-flight cleanup of orphaned ports
 echo -e "${RED}[0/3] Sweeping orphaned ports from previous runs...${NC}"
+pkill -f "uvicorn" 2>/dev/null || true
+pkill -f "python3 -m http.server" 2>/dev/null || true
+pkill -f "kubectl -- port-forward" 2>/dev/null || true
+pkill -f "kubectl port-forward" 2>/dev/null || true
+
 for port in 8000 8080 8081 9090; do
     pid=$(lsof -t -i:$port 2>/dev/null)
     if [ ! -z "$pid" ]; then
