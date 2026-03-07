@@ -4,6 +4,7 @@ Usage:
     python -m agents.main "OOM alert on payment-service in production"
 """
 
+import os
 import sys
 import logging
 from datetime import datetime
@@ -14,8 +15,15 @@ from agents.artifacts import (
     create_investigation,
     persist_graph_artifacts,
     save_report,
+    save_failure_trace,
+    save_validation_summary,
 )
-from agents.schemas import parse_remediation
+from agents.schemas import parse_remediation, WarRoomResult
+from governance.gate import GovernanceGate, persist_fallback_governance
+from governance.audit_log import AuditLog
+from governance.report import generate_governance_report
+from tools.executor import RemediationExecutor
+from tools.k8s_actions import KubernetesActions
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,17 +39,29 @@ def _extract_action_from_text(text: str) -> dict:
     return plan.to_action_dict()
 
 
-def run(alert_text: str) -> dict:
-    """Run the full war room investigation pipeline."""
+def run(alert_text: str, executor: RemediationExecutor | None = None) -> dict:
+    """Run the full war room investigation pipeline.
+
+    executor — optional RemediationExecutor; if None a mock instance is created.
+    Pass the real executor from api/server.py for live execution.
+    """
     print(f"\n{'='*60}")
     print(f"  NovaOps v2 — Autonomous SRE War Room")
     print(f"  Alert: {alert_text}")
     print(f"  Time: {datetime.now().isoformat()}")
     print(f"{'='*60}\n")
 
+    # Resolve executor — mock if not supplied (CLI / test mode)
+    if executor is None:
+        use_mock = os.environ.get("NOVAOPS_USE_MOCK", "1").strip().lower() not in {"0", "false", "no", "off"}
+        executor = RemediationExecutor(KubernetesActions(use_mock=use_mock))
+
     # Create investigation directory
     incident_id = create_investigation(alert_text)
     print(f"[*] Investigation ID: {incident_id}")
+
+    # Log alert receipt to audit trail
+    AuditLog(incident_id).log("ALERT_RECEIVED", actor="SYSTEM", data={"alert_text": alert_text})
 
     # Build the multi-agent graph
     print("[*] Building war room graph...")
@@ -50,8 +70,55 @@ def run(alert_text: str) -> dict:
 
     # Run the graph
     print("[*] Starting investigation...\n")
-    graph_result = graph(alert_text)
-    node_texts, war_room = persist_graph_artifacts(incident_id, graph_result)
+    graph_failed = False
+    try:
+        graph_result = graph(alert_text)
+        node_texts, war_room = persist_graph_artifacts(incident_id, graph_result)
+    except Exception as exc:
+        graph_failed = True
+        logger.exception("War room execution failed")
+        node_texts = {}
+        war_room = WarRoomResult()
+        validation_summary = build_validation_summary(node_texts, war_room)
+        save_validation_summary(incident_id, validation_summary)
+        save_failure_trace(
+            incident_id,
+            alert_text=alert_text,
+            domain=domain,
+            error=str(exc),
+        )
+        result_text = (
+            "Investigation failed during agent execution. "
+            f"Escalate to human. Error: {exc}"
+        )
+        proposed_action = {"tool": "noop_require_human", "parameters": {}}
+        report_path = save_report(
+            incident_id,
+            domain,
+            alert_text,
+            result_text,
+            validation_summary=validation_summary,
+        )
+        gov_result = persist_fallback_governance(
+            incident_id,
+            reason=f"Runtime failure forced safe escalation: {exc}",
+        )
+        generate_governance_report(incident_id)
+        return {
+            "incident_id": incident_id,
+            "domain": domain,
+            "result": result_text[:5000],
+            "proposed_action": proposed_action,
+            "validation_summary": validation_summary,
+            "report_path": report_path,
+            "severity": gov_result.severity,
+            "governance_decision": gov_result.decision,
+            "governance_status": gov_result.status,
+            "risk_score": gov_result.risk_score,
+            "policy_name": gov_result.policy_name,
+            "confidence": gov_result.confidence,
+            "confidence_source": gov_result.confidence_source,
+        }
 
     # Extract result using typed schemas
     proposed_action = war_room.proposed_action()
@@ -82,6 +149,19 @@ def run(alert_text: str) -> dict:
     )
     print(f"[*] Report saved: {report_path}")
 
+    # --- Governance gate ---
+    gate = GovernanceGate(executor)
+    gov_result = gate.evaluate(
+        incident_id,
+        {"proposed_action": proposed_action, "domain": domain},
+        war_room,
+    )
+    generate_governance_report(incident_id)
+    print(
+        f"[*] Governance: decision={gov_result.decision} "
+        f"risk={gov_result.risk_score}/100 policy={gov_result.policy_name}"
+    )
+
     return {
         "incident_id": incident_id,
         "domain": domain,
@@ -89,6 +169,14 @@ def run(alert_text: str) -> dict:
         "proposed_action": proposed_action,
         "validation_summary": validation_summary,
         "report_path": report_path,
+        # governance fields
+        "severity": gov_result.severity,
+        "governance_decision": gov_result.decision,
+        "governance_status": gov_result.status,
+        "risk_score": gov_result.risk_score,
+        "policy_name": gov_result.policy_name,
+        "confidence": gov_result.confidence,
+        "confidence_source": gov_result.confidence_source,
     }
 
 

@@ -2,10 +2,13 @@ import unittest
 import uuid
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+
+from fastapi import HTTPException
 
 from api.history_db import IncidentHistoryDB
 from api import server
+from governance.gate import GovernanceResult
 
 
 class ApiLogicTests(unittest.TestCase):
@@ -35,17 +38,23 @@ class ApiLogicTests(unittest.TestCase):
             },
         )
 
-        with patch.object(server, "db", self.db), patch.object(server, "executor") as executor_mock:
-            executor_mock.execute.return_value = {
-                "success": True,
-                "tool": "scale_deployment",
-                "result": {"success": True, "message": "scaled"},
-            }
+        fake_gov = GovernanceResult(
+            incident_id="inc-1", decision="REQUIRE_APPROVAL", policy_name="p2_scale_auto",
+            reason="test", risk_score=35, severity="P2", confidence=0.90,
+            confidence_source="critic", action="scale_deployment", auto_executed=False,
+            execution_result={"success": True, "tool": "scale_deployment"},
+            status="executed", evaluated_at="2026-01-01T00:00:00+00:00",
+        )
+
+        gate_mock = MagicMock()
+        gate_mock.approve_and_execute.return_value = fake_gov
+
+        with patch.object(server, "db", self.db), patch.object(server, "gate", gate_mock):
             response = server.approve_incident("inc-1")
 
         self.assertEqual(response["status"], "executed")
         self.assertEqual(response["tool"], "scale_deployment")
-        executor_mock.execute.assert_called_once()
+        gate_mock.approve_and_execute.assert_called_once()
         incident = self.db.get_incident("inc-1")
         self.assertEqual(incident["status"], "executed")
 
@@ -57,17 +66,62 @@ class ApiLogicTests(unittest.TestCase):
             proposed_action={"tool": "noop_require_human", "parameters": {}},
         )
 
-        with patch.object(server, "db", self.db), patch.object(server, "executor") as executor_mock:
-            executor_mock.execute.return_value = {
-                "success": False,
-                "tool": "noop_require_human",
-                "message": "No executable action proposed. Escalate to human.",
-            }
+        fake_gov = GovernanceResult(
+            incident_id="inc-2", decision="REQUIRE_APPROVAL", policy_name="default_require_approval",
+            reason="test", risk_score=20, severity="P2", confidence=0.0,
+            confidence_source="default", action="noop_require_human", auto_executed=False,
+            execution_result={"success": False, "message": "No executable action."},
+            status="execution_failed", evaluated_at="2026-01-01T00:00:00+00:00",
+        )
+
+        gate_mock = MagicMock()
+        gate_mock.approve_and_execute.return_value = fake_gov
+
+        with patch.object(server, "db", self.db), patch.object(server, "gate", gate_mock):
             response = server.approve_incident("inc-2")
 
         self.assertEqual(response["status"], "execution_failed")
         incident = self.db.get_incident("inc-2")
         self.assertEqual(incident["status"], "execution_failed")
+
+    def test_approve_incident_returns_conflict_for_denied_governance(self):
+        self.db.log_incident(
+            incident_id="inc-denied",
+            service_name="checkout",
+            alert_name="rollback blocked",
+            proposed_action={"tool": "rollback_deployment", "parameters": {"service_name": "checkout"}},
+        )
+
+        gate_mock = MagicMock()
+        gate_mock.approve_and_execute.side_effect = ValueError("Governance denied execution for this incident.")
+
+        with patch.object(server, "db", self.db), patch.object(server, "gate", gate_mock):
+            with self.assertRaises(HTTPException) as ctx:
+                server.approve_incident("inc-denied")
+
+        self.assertEqual(ctx.exception.status_code, 409)
+        incident = self.db.get_incident("inc-denied")
+        self.assertEqual(incident["status"], "plan_ready")
+
+    def test_approve_incident_returns_conflict_for_already_executed(self):
+        self.db.log_incident(
+            incident_id="inc-executed",
+            service_name="checkout",
+            alert_name="already handled",
+            proposed_action={"tool": "restart_pods", "parameters": {"service_name": "checkout"}},
+            status="auto_executed",
+        )
+
+        gate_mock = MagicMock()
+        gate_mock.approve_and_execute.side_effect = ValueError("Incident already executed with status=auto_executed.")
+
+        with patch.object(server, "db", self.db), patch.object(server, "gate", gate_mock):
+            with self.assertRaises(HTTPException) as ctx:
+                server.approve_incident("inc-executed")
+
+        self.assertEqual(ctx.exception.status_code, 409)
+        incident = self.db.get_incident("inc-executed")
+        self.assertEqual(incident["status"], "auto_executed")
 
     def test_get_incident_includes_validation_summary_from_artifact(self):
         report_dir = self.temp_dir / "incident-artifacts"

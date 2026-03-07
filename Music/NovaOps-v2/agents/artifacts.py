@@ -223,6 +223,21 @@ def save_validation_summary(incident_id: str, validation_summary: dict):
     )
 
 
+def save_failure_trace(incident_id: str, *, alert_text: str, domain: str, error: str, phase: str = "graph_execution"):
+    """Persist failure metadata when the investigation cannot complete."""
+    inv_dir = PLANS_DIR / incident_id
+    trace = {
+        "incident_id": incident_id,
+        "saved_at": datetime.now().isoformat(),
+        "status": "failed",
+        "phase": phase,
+        "domain": domain,
+        "alert_text": alert_text,
+        "error": error,
+    }
+    (inv_dir / "trace.json").write_text(json.dumps(trace, indent=2), encoding="utf-8")
+
+
 def save_report(
     incident_id: str,
     domain: str,
@@ -232,6 +247,7 @@ def save_report(
 ):
     """Generate and save the final investigation report."""
     inv_dir = PLANS_DIR / incident_id
+    structured = _load_structured_artifacts(inv_dir)
     validation_section = ""
     if validation_summary:
         invalid_nodes = validation_summary.get("invalid_nodes", [])
@@ -241,6 +257,7 @@ def save_report(
 - Valid nodes: {validation_summary.get('valid_nodes', 0)}/{validation_summary.get('total_nodes', 0)}
 - Invalid nodes: {", ".join(invalid_nodes) if invalid_nodes else "none"}
 """
+    result_section = _build_result_section(structured, graph_result)
     report = f"""# Investigation Report
 
 **Incident ID:** {incident_id}
@@ -249,7 +266,7 @@ def save_report(
 **Completed:** {datetime.now().isoformat()}
 
 ## Result
-{graph_result}
+{result_section}
 {validation_section}
 
 ## Artifacts
@@ -276,3 +293,92 @@ def save_report(
 
     logger.info(f"Report saved: {inv_dir / 'report.md'}")
     return str(inv_dir / "report.md")
+
+
+def _load_structured_artifacts(inv_dir: Path) -> dict:
+    structured_path = inv_dir / "structured.json"
+    if not structured_path.exists():
+        return {}
+    try:
+        return json.loads(structured_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _build_result_section(structured: dict, fallback_text: str) -> str:
+    triage = structured.get("triage") or {}
+    root_cause = structured.get("root_cause") or {}
+    critic = structured.get("critic") or {}
+    remediation = structured.get("remediation") or {}
+
+    if not structured:
+        return fallback_text
+
+    lines = []
+    if triage:
+        lines.extend(
+            [
+                "### Triage",
+                f"- Domain: `{triage.get('domain', 'unknown')}`",
+                f"- Severity: `{triage.get('severity', 'P2')}`",
+                f"- Service: `{triage.get('service_name', 'unknown')}`",
+            ]
+        )
+        summary = triage.get("summary")
+        if summary:
+            lines.append(f"- Summary: {summary}")
+        lines.append("")
+
+    hypotheses = root_cause.get("hypotheses") or []
+    top_hypothesis = hypotheses[0] if hypotheses else {}
+    if top_hypothesis or root_cause:
+        lines.append("### Root Cause")
+        if top_hypothesis:
+            lines.append(f"- Top hypothesis: {top_hypothesis.get('description', 'unknown')}")
+            lines.append(f"- Confidence: {top_hypothesis.get('confidence', 0.0):.0%}")
+            recommended = top_hypothesis.get("recommended_action")
+            if recommended:
+                lines.append(f"- Recommended action: `{recommended}`")
+        reasoning_chain = root_cause.get("reasoning_chain")
+        if reasoning_chain:
+            lines.append(f"- Reasoning: {reasoning_chain}")
+        gaps = root_cause.get("gaps") or []
+        if gaps:
+            lines.append(f"- Gaps: {', '.join(gaps)}")
+        lines.append("")
+
+    if critic:
+        lines.extend(
+            [
+                "### Critic Verdict",
+                f"- Verdict: `{critic.get('verdict', 'UNKNOWN')}`",
+                f"- Confidence: {critic.get('confidence', 0.0):.0%}",
+            ]
+        )
+        feedback = critic.get("feedback")
+        if feedback:
+            lines.append(f"- Feedback: {feedback}")
+        missing = critic.get("missing_evidence") or []
+        if missing:
+            lines.append(f"- Missing evidence: {', '.join(missing)}")
+        lines.append("")
+
+    if remediation:
+        lines.extend(
+            [
+                "### Proposed Remediation",
+                f"- Action: `{remediation.get('action_taken', 'noop_require_human')}`",
+            ]
+        )
+        justification = remediation.get("justification")
+        if justification:
+            lines.append(f"- Justification: {justification}")
+        parameters = remediation.get("parameters") or {}
+        if parameters:
+            param_text = ", ".join(f"{key}={value}" for key, value in parameters.items())
+            lines.append(f"- Parameters: {param_text}")
+        verification = remediation.get("verification_needed")
+        if verification:
+            lines.append(f"- Verify: {verification}")
+
+    return "\n".join(lines).strip() or fallback_text

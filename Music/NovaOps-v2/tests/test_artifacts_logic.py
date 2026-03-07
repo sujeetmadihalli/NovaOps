@@ -1,5 +1,6 @@
 import shutil
 import unittest
+import json
 from pathlib import Path
 import uuid
 
@@ -72,6 +73,37 @@ class ArtifactsLogicTests(unittest.TestCase):
         self.assertEqual(war_room.critic.verdict, "PASS")
 
     def test_save_report_includes_schema_validation_summary(self):
+        structured = {
+            "triage": {
+                "domain": "oom",
+                "severity": "P1",
+                "service_name": "checkout",
+                "summary": "Pods are crashing under memory pressure.",
+            },
+            "root_cause": {
+                "hypotheses": [
+                    {
+                        "description": "Memory leak after deploy",
+                        "confidence": 0.83,
+                        "recommended_action": "restart_pods",
+                    }
+                ],
+                "reasoning_chain": "Memory usage rose steadily after the latest deploy.",
+                "gaps": ["Heap dump"],
+            },
+            "critic": {
+                "verdict": "PASS",
+                "confidence": 0.9,
+                "feedback": "Evidence is sufficient.",
+            },
+            "remediation": {
+                "action_taken": "restart_pods",
+                "parameters": {"service_name": "checkout"},
+                "justification": "Recycle leaking workers.",
+                "verification_needed": "Check restart count and errors.",
+            },
+        }
+        (self.temp_dir / "inc-1" / "structured.json").write_text(json.dumps(structured), encoding="utf-8")
         validation_summary = {
             "schema_score": 0.62,
             "valid_nodes": 5,
@@ -88,6 +120,9 @@ class ArtifactsLogicTests(unittest.TestCase):
         )
 
         report_text = Path(report_path).read_text(encoding="utf-8")
+        self.assertIn("### Triage", report_text)
+        self.assertIn("Memory leak after deploy", report_text)
+        self.assertIn("### Proposed Remediation", report_text)
         self.assertIn("## Schema Validation", report_text)
         self.assertIn("Invalid nodes: triage, root_cause_reasoner, metrics_analyst", report_text)
 

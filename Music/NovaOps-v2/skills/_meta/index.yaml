@@ -14,7 +14,13 @@ alert_keywords:
     - "ThreadPoolExecutor exhausted"
     - "Rejecting requests"
     - "Liveness probe failed"
+    - "traffic surge"
     - "traffic spike"
+    - "latency"
+    - "high latency"
+    - "elevated latency"
+    - "slow responses"
+    - "throughput spike"
     - "request timeout"
   deadlock:
     - "Deadlock detected"

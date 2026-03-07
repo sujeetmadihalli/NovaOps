@@ -1,11 +1,13 @@
 """FastAPI webhook server for NovaOps v2.
 
 Endpoints:
-  POST /webhook/pagerduty — receive alert, trigger war room
-  GET  /api/incidents     — incident history for dashboard
-  GET  /api/incidents/{id}/report — get/generate PIR
-  POST /api/incidents/{id}/approve — Ghost Mode approval
-  GET  /health            — liveness probe
+  POST /webhook/pagerduty                    — receive alert, trigger war room
+  GET  /api/incidents                        — incident history for dashboard
+  GET  /api/incidents/{id}/report            — get/generate PIR
+  POST /api/incidents/{id}/approve           — Ghost Mode approval (via GovernanceGate)
+  GET  /api/governance/{id}/decision         — governance decision + risk score
+  GET  /api/governance/{id}/audit            — append-only audit trail
+  GET  /health                               — liveness probe
 """
 
 import logging
@@ -17,10 +19,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pathlib import Path
 
-from agents.main import run
 from agents.pir_generator import generate_pir
 from api.history_db import IncidentHistoryDB
 from api.slack_notifier import SlackNotifier
+from governance.gate import GovernanceGate
+from governance.audit_log import AuditLog
+from governance.report import generate_governance_report
 from tools.executor import RemediationExecutor
 from tools.k8s_actions import KubernetesActions
 
@@ -52,6 +56,7 @@ USE_MOCK = _env_bool("NOVAOPS_USE_MOCK", True)
 notifier = SlackNotifier(use_mock=USE_MOCK)
 k8s = KubernetesActions(use_mock=USE_MOCK)
 executor = RemediationExecutor(k8s)
+gate = GovernanceGate(executor)
 
 # Mount dashboard if it exists
 dashboard_dir = Path(__file__).parent.parent / "dashboard"
@@ -84,21 +89,32 @@ def _load_validation_summary(report_path: str) -> dict:
 
 def trigger_agent_loop(payload: AlertPayload):
     """Background task: run the war room investigation."""
+    from agents.main import run
+
     alert_text = payload.description or f"{payload.alert_name} on {payload.service_name}"
     logger.info(f"Starting investigation: {alert_text}")
 
     try:
-        result = run(alert_text)
+        result = run(alert_text, executor=executor)
 
         proposed_action = result.get("proposed_action", {})
+        # Map governance_status to a meaningful DB status
+        gov_status = result.get("governance_status", "plan_ready")
+        db_status = {
+            "auto_executed": "auto_executed",
+            "pending_approval": "plan_ready",
+            "denied": "denied",
+        }.get(gov_status, "plan_ready")
+
         db.log_incident(
             incident_id=result["incident_id"],
             service_name=payload.service_name,
             alert_name=payload.alert_name,
             domain=result.get("domain", ""),
+            severity=result.get("severity", ""),
             analysis=result.get("result", ""),
             proposed_action=proposed_action if proposed_action else {"tool": "unknown", "parameters": {}},
-            status="plan_ready",
+            status=db_status,
             report_path=result.get("report_path", ""),
         )
 
@@ -107,6 +123,10 @@ def trigger_agent_loop(payload: AlertPayload):
             domain=result.get("domain", ""),
             analysis=result.get("result", "")[:500],
             proposed_action=proposed_action if proposed_action else {"report_path": result.get("report_path", "")},
+        )
+        logger.info(
+            f"Incident {result['incident_id']}: governance={result.get('governance_decision')} "
+            f"risk={result.get('risk_score')}/100 status={db_status}"
         )
 
     except Exception as e:
@@ -145,22 +165,31 @@ def get_incident(incident_id: str):
 
 @app.post("/api/incidents/{incident_id}/approve")
 def approve_incident(incident_id: str):
-    """Ghost Mode: human approves the remediation plan."""
+    """Ghost Mode: human approves the remediation plan.
+
+    Execution is routed exclusively through GovernanceGate, which logs
+    HUMAN_OVERRIDE and EXECUTION_COMPLETE to the append-only audit trail
+    before returning. No executor call is made outside the gate.
+    """
     incident = db.get_incident(incident_id)
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
 
     try:
-        execution = executor.execute(incident)
-        new_status = "executed" if execution.get("success") else "execution_failed"
-        db.update_status(incident_id, new_status)
-        logger.info(f"Incident {incident_id} approved and processed with status={new_status}")
+        gov_result = gate.approve_and_execute(incident_id, incident)
+        db.update_status(incident_id, gov_result.status)
+        generate_governance_report(incident_id)
+        logger.info(f"Incident {incident_id} approved: status={gov_result.status}")
         return {
-            "status": new_status,
+            "status": gov_result.status,
             "incident_id": incident_id,
-            "tool": execution.get("tool", ""),
-            "result": execution,
+            "tool": gov_result.action,
+            "risk_score": gov_result.risk_score,
+            "result": gov_result.execution_result,
         }
+    except ValueError as e:
+        logger.warning(f"Approval rejected for incident {incident_id}: {e}")
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         db.update_status(incident_id, "execution_failed")
         logger.error(f"Execution failed for incident {incident_id}: {e}")
@@ -197,6 +226,34 @@ def get_pir(incident_id: str):
     if not incident.get("pir_report"):
         raise HTTPException(status_code=404, detail="No PIR generated yet")
     return {"status": "success", "report": incident["pir_report"]}
+
+
+@app.get("/api/governance/{incident_id}/decision")
+def get_governance_decision(incident_id: str):
+    """Return the persisted governance decision and risk assessment."""
+    gov_path = Path(__file__).parent.parent / "plans" / incident_id / "governance.json"
+    if not gov_path.exists():
+        raise HTTPException(status_code=404, detail="Governance decision not found")
+    try:
+        data = json.loads(gov_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read governance data: {e}")
+    return {"status": "success", "incident_id": incident_id, "governance": data}
+
+
+@app.get("/api/governance/{incident_id}/audit")
+def get_governance_audit(incident_id: str):
+    """Return the full append-only audit trail for an incident."""
+    audit_log = AuditLog(incident_id)
+    entries = audit_log.read_all()
+    if not entries:
+        raise HTTPException(status_code=404, detail="Audit trail not found or empty")
+    return {
+        "status": "success",
+        "incident_id": incident_id,
+        "entry_count": len(entries),
+        "entries": entries,
+    }
 
 
 @app.get("/health")

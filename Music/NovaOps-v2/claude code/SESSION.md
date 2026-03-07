@@ -26,4 +26,16 @@
 ## Current State
 
 - Backend flow is stable enough for continued demo work.
-- Remaining work is mostly cleanup, dashboard polish, and submission prep.
+- Offline mock mode now runs end-to-end without Bedrock access.
+- Governance decisions, audit trails, and governance reports are part of the runtime flow.
+- Remaining work is mostly dashboard polish, demo artifact refresh, and submission prep.
+
+## Session 5
+
+- Added governance policy engine, audit log, gate, and governance reports.
+- Fixed governance execution bugs around payload normalization, deny handling, and duplicate execution.
+- Added a fully offline mock graph path so `NOVAOPS_USE_MOCK=true` avoids live Bedrock calls.
+- Added graceful runtime failure fallback with safe governance escalation.
+- Tightened no-op governance so unknown alerts stay human-gated.
+- Improved investigation and governance report readability for demo artifacts.
+- Expanded tests to 45 passing in the repo virtual environment.

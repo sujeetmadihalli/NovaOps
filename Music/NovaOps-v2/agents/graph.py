@@ -9,13 +9,14 @@ Flow:
 
 import json
 import logging
+import os
 import re
 from typing import Any
 
 from strands import Agent
 from strands.multiagent import GraphBuilder
 
-from agents.models import get_model
+from agents.models import get_model, _use_mock_models
 from agents.prompts import (
     CRITIC_PROMPT,
     GITHUB_ANALYST_PROMPT,
@@ -150,6 +151,10 @@ def build_war_room(alert_text: str) -> tuple:
     domain = classify_domain(alert_text)
     logger.info(f"Domain classified: {domain}")
 
+    if _use_mock_models():
+        logger.info("Mock mode enabled: using offline war room graph")
+        return _MockGraph(domain), domain
+
     skill_summaries = get_all_skill_summaries()
     triage_skill = load_shared_skill("triage") or ""
     analyst_skill = load_analyst_skill(domain) or ""
@@ -261,3 +266,154 @@ def build_war_room(alert_text: str) -> tuple:
 
     graph = builder.build()
     return graph, domain
+
+
+class _MockMessageObject:
+    def __init__(self, text: str):
+        self.content = [{"text": text}]
+
+
+class _MockAgentResult:
+    def __init__(self, text: str):
+        self.message = _MockMessageObject(text)
+
+
+class _MockNodeResult:
+    def __init__(self, text: str):
+        self.result = _MockAgentResult(text)
+
+
+class _MockGraphResult:
+    def __init__(self, node_texts: dict[str, str]):
+        self.results = {
+            node_name: _MockNodeResult(text)
+            for node_name, text in node_texts.items()
+        }
+
+
+class _MockGraph:
+    def __init__(self, domain: str):
+        self.domain = domain
+
+    def __call__(self, alert_text: str):
+        return _MockGraphResult(_build_mock_node_texts(alert_text, self.domain))
+
+
+def _build_mock_node_texts(alert_text: str, domain: str) -> dict[str, str]:
+    service_name = _extract_service_name(alert_text)
+    namespace = _extract_namespace(alert_text)
+    severity = _extract_severity(alert_text)
+
+    action = "noop_require_human"
+    target_replicas = 4
+    confidence = 0.45
+    critic_verdict = "FAIL"
+    critic_feedback = "Evidence is incomplete. Escalate to a human operator."
+    summary = "Signal does not match a known domain with enough confidence."
+    findings = {
+        "log_analyst": {"summary": "No deterministic pattern in local mock analysis."},
+        "metrics_analyst": {"summary": "No strong resource saturation signal detected."},
+        "k8s_inspector": {"summary": "Kubernetes state appears stable in mock data."},
+        "github_analyst": {"summary": "No recent deployment correlation detected in mock data."},
+    }
+
+    if domain == "traffic_surge":
+        severity = "P2" if severity == "P2" else severity
+        action = "scale_deployment"
+        confidence = 0.88
+        critic_verdict = "PASS"
+        critic_feedback = "Traffic surge pattern is consistent across logs and metrics."
+        summary = "Checkout is under elevated demand and should scale horizontally."
+        findings = {
+            "log_analyst": {"traffic_spike": True, "error_rate": "moderate"},
+            "metrics_analyst": {"latency": "high", "cpu": "elevated", "traffic": "spiking"},
+            "k8s_inspector": {"pods_ready": True, "hpa": "at_limit"},
+            "github_analyst": {"recent_deployment": False},
+        }
+    elif domain == "oom":
+        action = "restart_pods"
+        confidence = 0.83
+        critic_verdict = "PASS"
+        critic_feedback = "OOM evidence is clear and restarting pods is a safe first action."
+        summary = "Memory pressure indicates unstable workers that should be recycled."
+        findings = {
+            "log_analyst": {"oom_kill": True, "memory_errors": True},
+            "metrics_analyst": {"memory": "critical", "cpu": "normal"},
+            "k8s_inspector": {"restarts": "increasing", "termination_reason": "OOMKilled"},
+            "github_analyst": {"recent_deployment": True},
+        }
+
+    triage = {
+        "domain": domain,
+        "severity": severity,
+        "service_name": service_name,
+        "namespace": namespace,
+        "initial_hypotheses": [summary],
+        "key_evidence": [summary],
+        "summary": summary,
+    }
+    root_cause = {
+        "hypotheses": [
+            {
+                "rank": 1,
+                "description": summary,
+                "confidence": confidence,
+                "evidence_for": [summary],
+                "evidence_against": [],
+                "recommended_action": action,
+            }
+        ],
+        "reasoning_chain": summary,
+        "gaps": [] if critic_verdict == "PASS" else ["Human review recommended"],
+        "confidence_overall": confidence,
+    }
+    critic = {
+        "verdict": critic_verdict,
+        "confidence": confidence,
+        "feedback": critic_feedback,
+        "missing_evidence": [] if critic_verdict == "PASS" else ["Run live investigation"],
+        "action_approved": critic_verdict == "PASS",
+    }
+
+    remediation_params = {"service_name": service_name, "namespace": namespace}
+    if action == "scale_deployment":
+        remediation_params["target_replicas"] = target_replicas
+    remediation = {
+        "action_taken": action,
+        "parameters": remediation_params,
+        "justification": summary,
+        "verification_needed": "Verify latency, error rate, and pod health after remediation.",
+        "escalation_required": critic_verdict != "PASS",
+    }
+
+    node_texts = {
+        "triage": json.dumps(triage),
+        "root_cause_reasoner": json.dumps(root_cause),
+        "critic": json.dumps(critic),
+        "remediation_planner": json.dumps(remediation),
+    }
+    for node_name, finding in findings.items():
+        node_texts[node_name] = json.dumps(finding)
+    return node_texts
+
+
+def _extract_service_name(alert_text: str) -> str:
+    match = re.search(r"\bon\s+([a-z0-9-]+)", alert_text.lower())
+    if match:
+        return match.group(1)
+    match = re.search(r"\b([a-z0-9-]+)-service\b", alert_text.lower())
+    if match:
+        return f"{match.group(1)}-service"
+    return "unknown-service"
+
+
+def _extract_namespace(alert_text: str) -> str:
+    text = alert_text.lower()
+    if " production" in text or " prod" in text:
+        return "prod"
+    return "default"
+
+
+def _extract_severity(alert_text: str) -> str:
+    match = re.search(r"\b(P[1-4])\b", alert_text.upper())
+    return match.group(1) if match else "P2"

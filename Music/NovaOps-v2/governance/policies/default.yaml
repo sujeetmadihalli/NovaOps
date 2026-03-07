@@ -1,0 +1,54 @@
+# NovaOps v2 — Default Governance Policies
+# Evaluated in priority order; first matching policy wins.
+#
+# Canonical action names (from agents/schemas.py ALLOWED_ACTIONS):
+#   rollback_deployment | scale_deployment | restart_pods | noop_require_human
+#
+# confidence_min / confidence_max operate on the resolved confidence signal
+# (precedence: critic.confidence > root_cause.confidence_overall > top_hypothesis.confidence)
+
+policies:
+  - name: noop_requires_approval
+    description: "No-op actions indicate insufficient confidence and should stay human-gated"
+    conditions:
+      actions: ["noop_require_human"]
+    decision: REQUIRE_APPROVAL
+
+  - name: p1_always_requires_approval
+    description: "P1 incidents are critical — require human approval regardless of action or confidence"
+    conditions:
+      severities: ["P1"]
+    decision: REQUIRE_APPROVAL
+
+  - name: rollback_always_requires_approval
+    description: "rollback_deployment is irreversible — always require human approval"
+    conditions:
+      actions: ["rollback_deployment"]
+    decision: REQUIRE_APPROVAL
+
+  - name: low_confidence_requires_approval
+    description: "Confidence below 65% — insufficient certainty for autonomous action"
+    conditions:
+      confidence_max: 0.65
+    decision: REQUIRE_APPROVAL
+
+  - name: high_confidence_p3_p4_auto
+    description: "High-confidence P3/P4 restarts and scales can execute autonomously"
+    conditions:
+      severities: ["P3", "P4"]
+      actions: ["restart_pods", "scale_deployment"]
+      confidence_min: 0.75
+    decision: ALLOW_AUTO
+
+  - name: p2_scale_auto
+    description: "High-confidence P2 scale operations are safe to auto-execute"
+    conditions:
+      severities: ["P2"]
+      actions: ["scale_deployment"]
+      confidence_min: 0.85
+    decision: ALLOW_AUTO
+
+  - name: default_require_approval
+    description: "Default fallback — require human approval for anything not explicitly allowed"
+    conditions: {}
+    decision: REQUIRE_APPROVAL
