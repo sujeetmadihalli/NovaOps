@@ -36,6 +36,8 @@ def run_test_scenario(scenario_name: str, mock_data: dict, expected_tool: str):
         agent.rag.search_relevant_runbook = lambda query: "If threads are deadlocked and CPU is at 0%, but the service is unresponsive, restart the pods to clear the race condition."
     elif "typo" in scenario_name.lower() or "database connection" in scenario_name.lower():
         agent.rag.search_relevant_runbook = lambda query: "If the application refuses to start instantly after a deployment due to 'ConnectionRefused' to the database, use rollback_deployment to undo the bad configuration."
+    elif "zero-shot" in scenario_name.lower():
+        agent.rag.search_relevant_runbook = lambda query: "No relevant runbook found for this issue."
     else:
         agent.rag.search_relevant_runbook = lambda query: "No specific runbook found for this issue."
     
@@ -126,6 +128,17 @@ def main():
         "github": [{"sha": "m3n4b5", "author": "dev", "message": "chore: linting", "date": "1 day ago"}]
     }
 
+    # ---------------------------------------------------------
+    # SCENARIO 7: ZERO-SHOT COMMON ERROR (NO RUNBOOK)
+    # ---------------------------------------------------------
+    # Should Scale (Service is overwhelmed, but the agent has ZERO instructions on how to handle it. It must rely on its own LLM pre-training)
+    scenario_7 = {
+        "metrics": {"cpu_utilization": "99.9%", "memory_usage_mb": 500, "memory_limit_mb": 4096},
+        "k8s_events": [{"type": "Warning", "reason": "FailedProbes", "message": "Liveness probe failed: HTTP timeout", "timestamp": "Now"}],
+        "logs": [{"timestamp": "Now", "message": "[ERROR] ThreadPoolExecutor exhausted. Rejecting requests."}],
+        "github": [{"sha": "x9y8z7", "author": "dev", "message": "fix: typo in readme", "date": "3 days ago"}]
+    }
+
     print("STARTING BATCH EVALUATION...")
     print("Testing Amazon Nova's reasoning capabilities across diverse incident signatures.")
     
@@ -140,6 +153,8 @@ def main():
     run_test_scenario("Organic Cache Bloat OOM", scenario_5, expected_tool="restart_pods")
     time.sleep(2)
     run_test_scenario("Unknown Third-Party API Outage", scenario_6, expected_tool="noop_require_human")
+    time.sleep(2)
+    run_test_scenario("Zero-Shot Traffic Surge (No Runbook)", scenario_7, expected_tool="scale_deployment")
 
 if __name__ == "__main__":
     main()
