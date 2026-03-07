@@ -1,19 +1,31 @@
 import logging
 from fastapi import FastAPI, BackgroundTasks, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Any, Dict
 
 from agent.orchestrator import AgentOrchestrator
 from api.slack_notifier import SlackNotifier
+from api.history_db import IncidentHistoryDB
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Autonomous Incident Agent Webhook API")
 
+# Allow local dashboard to connect
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Setup components (using MOCK for safe local testing)
 agent = AgentOrchestrator(use_mock=True)
 notifier = SlackNotifier(use_mock=True)
+db = IncidentHistoryDB()
 
 class AlertPayload(BaseModel):
     alert_name: str
@@ -36,6 +48,15 @@ def trigger_agent_loop(payload: AlertPayload):
     )
     
     if result.get("status") == "plan_ready":
+        # Log the incident to the Dashboard Database
+        db.log_incident(
+            incident_id=payload.incident_id,
+            service_name=payload.service_name,
+            alert_name=payload.alert_name,
+            analysis=result.get("analysis"),
+            proposed_action=result.get("proposed_action")
+        )
+        
         # Hand off to Ghost Mode Slack to get human approval
         notifier.send_incident_plan(
             incident_id=payload.incident_id,
@@ -44,6 +65,14 @@ def trigger_agent_loop(payload: AlertPayload):
         )
     else:
         logger.error(f"Agent failed to formulate a plan: {result.get('reason')}")
+        
+@app.get("/api/incidents")
+def get_incident_history():
+    """
+    Returns the recent history of all AI handled incidents for the Web Dashboard.
+    """
+    history = db.get_recent_incidents(limit=50)
+    return {"status": "success", "count": len(history), "data": history}
         
 @app.post("/webhook/pagerduty")
 async def pagerduty_webhook(payload: AlertPayload, background_tasks: BackgroundTasks):

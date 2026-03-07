@@ -65,6 +65,26 @@ The agent will read the context telemetry, identify the correct root causes out 
 
 ---
 
+## Visualizing Artificial Reasoning (Web Dashboard)
+
+NovaOps ships with a sleek, responsive frontend Dashboard to visualize the agent's incident history, deductive reasoning, and metric win-rates over time.
+
+To launch the dashboard locally for the demo:
+1. Start the FastAPI backend to serve the SQLite history:
+   ```bash
+   venv/bin/uvicorn api.server:app --reload --port 8000
+   ```
+2. In a new terminal, serve the static HTML frontend:
+   ```bash
+   python3 -m http.server 8080 --directory dashboard
+   ```
+3. Navigate to `http://localhost:8080` in your browser.
+
+> [!TIP]
+> **Enterprise Architecture Note**: In a production AWS environment, this custom frontend is completely optional. NovaOps is designed to stream its JSON decision payloads natively into **Amazon DynamoDB** and **Amazon OpenSearch**. From there, SRE teams simply use **AWS Managed Grafana**, **AWS QuickSight**, or native **CloudWatch Dashboards** to render the analytics instantly without managing extra UI infrastructure.
+
+---
+
 ## MTTR Reduction & Speed
 
 When a human engineer is paged at 3:00 AM, the Mean Time to Resolution (MTTR) is often severely bottlenecked by the time it takes them to wake up, log into VPNs, and manually triangulate data across Datadog, AWS CloudWatch, GitHub, and Kubernetes dashboards (typically ~15 to 20 minutes just to understand the problem).

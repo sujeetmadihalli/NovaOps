@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NovaOps | Incident Intelligence Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background-grid"></div>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    <div class="app-container">
+        <header class="navbar">
+            <div class="logo">
+                <i class="fa-solid fa-satellite-dish"></i>
+                <h1>NovaOps <span>Agent</span></h1>
+            </div>
+            <div class="nav-metrics">
+                <span class="pulse-indicator"></span>
+                <span>Live Telemetry Connected</span>
+            </div>
+        </header>
+
+        <main class="dashboard-grid">
+            <!-- Left Column: Stats & Meta -->
+            <section class="meta-panel">
+                <div class="glass-card stat-card">
+                    <div class="stat-header">
+                        <h3>Model Engine</h3>
+                        <i class="fa-brands fa-aws"></i>
+                    </div>
+                    <div class="stat-value">Amazon Nova Pro</div>
+                    <div class="stat-subtitle">300K Context Window</div>
+                </div>
+
+                <div class="glass-card stat-card">
+                    <div class="stat-header">
+                        <h3>Agent Win Rate</h3>
+                        <i class="fa-solid fa-chart-line"></i>
+                    </div>
+                    <div class="stat-value">100%</div>
+                    <div class="stat-subtitle">Successful Remediation Plans</div>
+                </div>
+
+                <div class="glass-card info-card">
+                    <h3>Enterprise Architecture</h3>
+                    <p>In a production AWS environment, this telemetry feed is natively ingested by <strong>Amazon DynamoDB</strong> and visualized via <strong>Amazon QuickSight</strong> or <strong>Managed Grafana</strong> without requiring custom frontend infrastructure.</p>
+                </div>
+            </section>
+
+            <!-- Right Column: Incident Feed -->
+            <section class="incident-feed">
+                <div class="feed-header">
+                    <h2>Recent Incident Resolutions</h2>
+                    <button id="refresh-btn" class="icon-btn"><i class="fa-solid fa-rotate-right"></i></button>
+                </div>
+                
+                <div id="incidents-container" class="incidents-list">
+                    <!-- Incidents will be injected here by JS -->
+                    <div class="loading-state">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i>
+                        <p>Polling Event Gateway...</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Incident Template for easy cloning -->
+    <template id="incident-template">
+        <div class="glass-card incident-card">
+            <div class="incident-header">
+                <div class="incident-title">
+                    <span class="severity-badge">CRITICAL</span>
+                    <h3 class="alert-name">Alert Name</h3>
+                </div>
+                <div class="incident-meta">
+                    <span class="service-tag"><i class="fa-solid fa-server"></i> <span class="service-name">service</span></span>
+                    <span class="timestamp"><i class="fa-regular fa-clock"></i> <span class="time-str">Just now</span></span>
+                </div>
+            </div>
+            
+            <div class="incident-body">
+                <div class="rca-section">
+                    <h4><i class="fa-solid fa-brain"></i> Agent Root Cause Analysis</h4>
+                    <p class="analysis-text">Loading deductive reasoning...</p>
+                </div>
+                
+                <div class="action-section">
+                    <h4><i class="fa-solid fa-terminal"></i> Proposed Mitigation</h4>
+                    <div class="code-block">
+                        <span class="tool-name">tool_name</span>
+                        <pre class="parameters">{}</pre>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="incident-footer">
+                <div class="status-indicator">
+                    <i class="fa-solid fa-circle-check"></i> <span class="status-text">Plan Generated</span>
+                </div>
+                <button class="ghost-btn" title="View Full Trace"><i class="fa-solid fa-code-fork"></i> ReAct Trace</button>
+            </div>
+        </div>
+    </template>
+
+    <script src="app.js"></script>
+</body>
+</html>
