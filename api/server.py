@@ -125,6 +125,7 @@ async def pagerduty_webhook(payload: AlertPayload, background_tasks: BackgroundT
 def generate_pir(incident_id: str):
     """
     Generates a Post-Incident Report (PIR) for a given incident using Amazon Nova.
+    Also auto-learns by saving it as a runbook if no similar runbook already exists.
     """
     incident = db.get_incident(incident_id)
     if not incident:
@@ -133,6 +134,14 @@ def generate_pir(incident_id: str):
     runbook = kb.search_relevant_runbook(f"{incident['alert_name']} {incident['service_name']}")
     report = pir_gen.generate(incident, runbook_content=runbook)
     db.save_pir(incident_id, report)
+
+    # Self-Learning: Save PIR as a new runbook if this is a novel incident type
+    if not kb.has_similar_runbook(incident["alert_name"], incident["service_name"]):
+        saved_file = kb.save_as_runbook(incident["alert_name"], incident["service_name"], report)
+        logger.info(f"Auto-learned: PIR saved as new runbook '{saved_file}' for future RAG retrieval.")
+    else:
+        logger.info(f"Runbook already covers this incident type. Skipping auto-save.")
+
     return {"status": "success", "incident_id": incident_id, "report": report}
 
 

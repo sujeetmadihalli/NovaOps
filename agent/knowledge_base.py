@@ -89,3 +89,48 @@ class KnowledgeBaseRAG:
             return "No strictly relevant runbook found. Proceed with general troubleshooting."
 
         return f"Found relevant Runbook ({best_rb['filename']}):\n{best_rb['content']}"
+
+    # ------------------------------------------------------------------ #
+    #  Self-Learning: PIR → Runbook Auto-Save                              #
+    # ------------------------------------------------------------------ #
+
+    def has_similar_runbook(self, alert_name: str, service_name: str) -> bool:
+        """Checks if a sufficiently similar runbook already exists to avoid duplicates."""
+        if not self._runbooks:
+            return False
+
+        query = f"{alert_name} {service_name}"
+        query_tokens = self._tokenize(query)
+        scored = [(self._tfidf_score(query_tokens, rb), rb) for rb in self._runbooks]
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        best_score, best_rb = scored[0]
+        SIMILARITY_THRESHOLD = 0.15  # Tuned: above this means a strong match already exists
+
+        if best_score >= SIMILARITY_THRESHOLD:
+            logger.info(f"Similar runbook already exists: '{best_rb['filename']}' (score={best_score:.4f}). Skipping save.")
+            return True
+
+        logger.info(f"No similar runbook found (best score={best_score:.4f}). Safe to save new runbook.")
+        return False
+
+    def save_as_runbook(self, alert_name: str, service_name: str, pir_content: str) -> str:
+        """Saves a PIR as a new runbook markdown file and re-indexes the TF-IDF corpus."""
+        # Create a URL-safe filename from the alert name
+        safe_name = alert_name.lower().replace(" ", "-").replace("(", "").replace(")", "")
+        safe_name = "".join(c for c in safe_name if c.isalnum() or c == "-")
+        filename = f"pir-{safe_name}.md"
+        filepath = os.path.join(self.runbooks_dir, filename)
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(pir_content)
+
+        logger.info(f"Saved PIR as new runbook: {filename}")
+
+        # Re-index the entire corpus so new runbook is immediately searchable
+        self._runbooks = []
+        self._idf = {}
+        self._load_and_index()
+
+        return filename
+
