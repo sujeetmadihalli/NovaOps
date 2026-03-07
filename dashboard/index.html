@@ -123,10 +123,42 @@
                 <div class="status-indicator">
                     <i class="fa-solid fa-circle-check"></i> <span class="status-text">Plan Generated</span>
                 </div>
-                <button class="ghost-btn" title="View Full Trace"><i class="fa-solid fa-code-fork"></i> ReAct Trace</button>
+                <div class="footer-actions">
+                    <button class="ghost-btn pir-btn" title="Generate Post-Incident Report">
+                        <i class="fa-solid fa-file-lines"></i> Post-Incident Report
+                    </button>
+                    <button class="ghost-btn" title="View Full Trace"><i class="fa-solid fa-code-fork"></i> ReAct Trace</button>
+                </div>
             </div>
         </div>
     </template>
+
+    <!-- PIR Modal -->
+    <div id="pir-modal" class="pir-modal-overlay" style="display: none;">
+        <div class="pir-modal">
+            <div class="pir-modal-header">
+                <div class="pir-modal-title">
+                    <i class="fa-solid fa-file-lines"></i>
+                    <h2>Post-Incident Report</h2>
+                    <span class="pir-badge">Nova Generated</span>
+                </div>
+                <button id="pir-close-btn" class="icon-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="pir-modal-body">
+                <div id="pir-loading" class="pir-loading">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    <p>Amazon Nova is generating your Post-Incident Report...</p>
+                </div>
+                <pre id="pir-content" class="pir-content" style="display: none;"></pre>
+            </div>
+            <div class="pir-modal-footer">
+                <button id="pir-copy-btn" class="ghost-btn" style="display: none;">
+                    <i class="fa-solid fa-copy"></i> Copy Report
+                </button>
+                <button id="pir-close-footer-btn" class="ghost-btn">Close</button>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 </body>

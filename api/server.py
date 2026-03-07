@@ -1,10 +1,11 @@
 import logging
-from fastapi import FastAPI, BackgroundTasks, Request
+from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Any, Dict
 
 from agent.orchestrator import AgentOrchestrator
+from agent.pir_generator import PIRGenerator
 from api.slack_notifier import SlackNotifier
 from api.history_db import IncidentHistoryDB
 
@@ -26,6 +27,7 @@ app.add_middleware(
 agent = AgentOrchestrator(mock_sensors=False)
 notifier = SlackNotifier(use_mock=False)
 db = IncidentHistoryDB()
+pir_gen = PIRGenerator()
 
 class AlertPayload(BaseModel):
     alert_name: str
@@ -94,6 +96,33 @@ async def pagerduty_webhook(payload: AlertPayload, background_tasks: BackgroundT
     background_tasks.add_task(trigger_agent_loop, payload)
     
     return {"status": "accepted", "message": "Incident assigned to Agent"}
+
+@app.post("/api/incidents/{incident_id}/report")
+def generate_pir(incident_id: str):
+    """
+    Generates a Post-Incident Report (PIR) for a given incident using Amazon Nova.
+    """
+    incident = db.get_incident(incident_id)
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    report = pir_gen.generate(incident)
+    db.save_pir(incident_id, report)
+    return {"status": "success", "incident_id": incident_id, "report": report}
+
+
+@app.get("/api/incidents/{incident_id}/report")
+def get_pir(incident_id: str):
+    """
+    Returns an existing PIR for a given incident.
+    """
+    incident = db.get_incident(incident_id)
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    if not incident.get("pir_report"):
+        raise HTTPException(status_code=404, detail="No PIR has been generated for this incident yet")
+    return {"status": "success", "incident_id": incident_id, "report": incident["pir_report"]}
+
 
 @app.get("/health")
 def health_check():

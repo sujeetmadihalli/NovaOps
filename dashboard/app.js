@@ -1,5 +1,62 @@
 document.addEventListener('DOMContentLoaded', () => {
     const API_URL = 'http://127.0.0.1:8000/api/incidents';
+    const pirModal = document.getElementById('pir-modal');
+    const pirLoading = document.getElementById('pir-loading');
+    const pirContent = document.getElementById('pir-content');
+    const pirCopyBtn = document.getElementById('pir-copy-btn');
+
+    // PIR Modal helpers
+    function openPirModal() {
+        pirModal.style.display = 'flex';
+        pirLoading.style.display = 'flex';
+        pirContent.style.display = 'none';
+        pirCopyBtn.style.display = 'none';
+        pirContent.textContent = '';
+    }
+
+    function showPirContent(text) {
+        pirLoading.style.display = 'none';
+        pirContent.style.display = 'block';
+        pirCopyBtn.style.display = 'inline-flex';
+        pirContent.textContent = text;
+    }
+
+    function closePirModal() {
+        pirModal.style.display = 'none';
+    }
+
+    document.getElementById('pir-close-btn').addEventListener('click', closePirModal);
+    document.getElementById('pir-close-footer-btn').addEventListener('click', closePirModal);
+    pirModal.addEventListener('click', (e) => { if (e.target === pirModal) closePirModal(); });
+
+    pirCopyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(pirContent.textContent).then(() => {
+            pirCopyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+            setTimeout(() => {
+                pirCopyBtn.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Report';
+            }, 2000);
+        });
+    });
+
+    async function fetchOrGeneratePir(incidentId) {
+        openPirModal();
+        try {
+            // Try to get an existing PIR first
+            let response = await fetch(`${API_URL}/${incidentId}/report`);
+            if (response.ok) {
+                const data = await response.json();
+                showPirContent(data.report);
+                return;
+            }
+            // Not found — generate a new one
+            response = await fetch(`${API_URL}/${incidentId}/report`, { method: 'POST' });
+            if (!response.ok) throw new Error(`Server error: ${response.status}`);
+            const data = await response.json();
+            showPirContent(data.report);
+        } catch (err) {
+            showPirContent(`Failed to generate Post-Incident Report.\n\nError: ${err.message}`);
+        }
+    }
     const container = document.getElementById('incidents-container');
     const refreshBtn = document.getElementById('refresh-btn');
     const template = document.getElementById('incident-template');
@@ -114,19 +171,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
         incidents.forEach(inc => {
             const clone = template.content.cloneNode(true);
-            
+
             // Map JSON to DOM
             clone.querySelector('.alert-name').textContent = inc.alert_name;
             clone.querySelector('.service-name').textContent = inc.service_name;
-            
+
             // Format timestamp relative to now
             const date = new Date(inc.timestamp + "Z"); // SQLite defaults to UTC
             clone.querySelector('.time-str').textContent = date.toLocaleString();
-            
+
             clone.querySelector('.analysis-text').textContent = inc.analysis;
             clone.querySelector('.tool-name').textContent = inc.proposed_tool;
             clone.querySelector('.parameters').textContent = JSON.stringify(inc.action_parameters, null, 2);
-            
+
+            // Mark card if a PIR already exists
+            const pirBtn = clone.querySelector('.pir-btn');
+            if (inc.pir_report) {
+                pirBtn.innerHTML = '<i class="fa-solid fa-file-circle-check"></i> View PIR';
+                pirBtn.classList.add('pir-exists');
+            }
+            pirBtn.addEventListener('click', () => fetchOrGeneratePir(inc.incident_id));
+
             container.appendChild(clone);
         });
     }
