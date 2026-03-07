@@ -53,23 +53,15 @@ Run the provided bash script to start the local port forwards required for the a
 ```
 *(Leave this terminal window open in the background!)*
 
-### 3. Induce the Production Incident
-In a new terminal, intentionally trigger the memory leak on the dummy victim application to simulate a massive usage spike:
+### 3. Trigger the Autonomous Multi-Scenario Edge Cases
+In a new terminal, run the batch testing suite. This script will automatically inject completely opposite incidents (e.g., Memory Leaks vs. Traffic Surges) to demonstrate the agent's real-time deductive reasoning:
 
 ```bash
-curl http://localhost:8080/memory-leak
-# (Run this 2 or 3 times to guarantee a pod crash)
-```
-
-### 4. Trigger the Amazon Nova Agent
-Rather than waiting 3 minutes for the Prometheus Webhook to naturally fire the Event Gateway, you can instantly execute the agent against the live infrastructure to demonstrate the ReAct loop:
-
-```bash
-PYTHONPATH=. venv/bin/python evaluation_harness/test_agent_accuracy.py
+PYTHONPATH=. venv/bin/python evaluation_harness/multi_scenario_test.py
 ```
 
 **Expected Result:**
-The agent will pull the live Memory telemetry from Prometheus, identify the `dummy-service` saturation, retrieve the `dummy-service-oom` runbook from the Vector database, and generate an interactive "Ghost Mode" Slack payload proposing a safe `restart_pods` mitigation plan.
+The agent will read the context telemetry, identify the correct root causes out of multiple conflicting possibilities, and generate an interactive "Ghost Mode" Slack payload proposing entirely different but safe mitigation plans (Rollback vs Scale).
 
 ---
 
