@@ -145,14 +145,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // Escape HTML first
         let html = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         
-        // Replace ANSI color codes
-        html = html.replace(/\x1b\[0;31m/g, '<span class="ansi-red">')
-                   .replace(/\x1b\[0;32m/g, '<span class="ansi-green">')
-                   .replace(/\x1b\[0;33m/g, '<span class="ansi-yellow">')
-                   .replace(/\x1b\[0;34m/g, '<span class="ansi-blue">')
-                   .replace(/\x1b\[0;35m/g, '<span class="ansi-magenta">')
-                   .replace(/\x1b\[0;36m/g, '<span class="ansi-cyan">')
-                   .replace(/\x1b\[0m/g, '</span>');
+        // Replace ANSI color codes (using actual ESC char \x1b = \u001b)
+        html = html.replace(/\u001b\[0;31m/g, '<span class="ansi-red">')
+                   .replace(/\u001b\[0;32m/g, '<span class="ansi-green">')
+                   .replace(/\u001b\[0;33m/g, '<span class="ansi-yellow">')
+                   .replace(/\u001b\[0;34m/g, '<span class="ansi-blue">')
+                   .replace(/\u001b\[0;35m/g, '<span class="ansi-magenta">')
+                   .replace(/\u001b\[0;36m/g, '<span class="ansi-cyan">')
+                   .replace(/\u001b\[0m/g, '</span>');
+        
+        // Strip any remaining unmatched ANSI escape sequences
+        html = html.replace(/\u001b\[[0-9;]*m/g, '');
                    
         return html;
     }

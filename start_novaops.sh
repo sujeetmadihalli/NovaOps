@@ -2,7 +2,7 @@
 # Unified Launch Script for NovaOps Demo Environment
 
 # Color Codes
-GREEN='\03---[0;32m'
+GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 RED='\033[0;31m'
 MAGENTA='\033[0;35m'

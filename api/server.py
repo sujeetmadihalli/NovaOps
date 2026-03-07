@@ -93,9 +93,16 @@ def get_live_logs():
     try:
         from collections import deque
         with open("novaops.log", "r", encoding="utf-8") as f:
-            # Grab the last 500 lines to prevent payload bloat
-            last_lines = deque(f, 500)
-        return {"status": "success", "logs": list(last_lines)}
+            # Grab all lines and filter out noisy dashboard polling lines
+            all_lines = f.readlines()
+        
+        # Filter out repetitive auto-refresh lines that flood the buffer
+        noise_patterns = ["GET /api/incidents", "GET /api/logs"]
+        filtered = [l for l in all_lines if not any(p in l for p in noise_patterns)]
+        
+        # Only return the last 500 meaningful lines
+        last_lines = filtered[-500:] if len(filtered) > 500 else filtered
+        return {"status": "success", "logs": last_lines}
     except FileNotFoundError:
         return {"status": "success", "logs": ["Waiting for novaops.log buffer to initialize..."]}
         

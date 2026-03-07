@@ -152,6 +152,7 @@ body {
     margin-bottom: 0.25rem;
     background: linear-gradient(90deg, #fff, #8b949e);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 .stat-subtitle { font-size: 0.875rem; color: var(--text-secondary); }
