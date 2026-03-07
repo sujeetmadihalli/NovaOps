@@ -36,6 +36,8 @@ def run_test_scenario(scenario_name: str, mock_data: dict, expected_tool: str):
         agent.rag.search_relevant_runbook = lambda query: "If threads are deadlocked and CPU is at 0%, but the service is unresponsive, restart the pods to clear the race condition."
     elif "typo" in scenario_name.lower() or "database connection" in scenario_name.lower():
         agent.rag.search_relevant_runbook = lambda query: "If the application refuses to start instantly after a deployment due to 'ConnectionRefused' to the database, use rollback_deployment to undo the bad configuration."
+    else:
+        agent.rag.search_relevant_runbook = lambda query: "No specific runbook found for this issue."
     
     # 2. Trigger
     result = agent.run_incident_resolution(
@@ -113,6 +115,17 @@ def main():
         "github": [{"sha": "z9x8c7", "author": "dev", "message": "feat: initial commit", "date": "4 months ago"}]
     }
 
+    # ---------------------------------------------------------
+    # SCENARIO 6: COMPLETELY UNKNOWN ALIEN ERROR (NO RUNBOOK)
+    # ---------------------------------------------------------
+    # Should NOOP (Unknown external API failure). Restarting or scaling won't fix a third-party outage.
+    scenario_6 = {
+        "metrics": {"cpu_utilization": "5%", "memory_usage_mb": 100, "memory_limit_mb": 4096},
+        "k8s_events": [],
+        "logs": [{"timestamp": "Now", "message": "[ERROR] UnknownHostException: api.thirdparty-vendor.com Name or service not known"}],
+        "github": [{"sha": "m3n4b5", "author": "dev", "message": "chore: linting", "date": "1 day ago"}]
+    }
+
     print("STARTING BATCH EVALUATION...")
     print("Testing Amazon Nova's reasoning capabilities across diverse incident signatures.")
     
@@ -125,6 +138,8 @@ def main():
     run_test_scenario("Bad DB Config Deployment Crash", scenario_4, expected_tool="rollback_deployment")
     time.sleep(2)
     run_test_scenario("Organic Cache Bloat OOM", scenario_5, expected_tool="restart_pods")
+    time.sleep(2)
+    run_test_scenario("Unknown Third-Party API Outage", scenario_6, expected_tool="noop_require_human")
 
 if __name__ == "__main__":
     main()
