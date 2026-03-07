@@ -14,6 +14,16 @@ echo -e "${BLUE}==============================================${NC}"
 echo -e "${BLUE}       Starting NovaOps Demo Environment      ${NC}"
 echo -e "${BLUE}==============================================${NC}"
 
+# Pre-flight cleanup of orphaned ports
+echo -e "${RED}[0/3] Sweeping orphaned ports from previous runs...${NC}"
+for port in 8000 8080 8081 9090; do
+    pid=$(lsof -t -i:$port 2>/dev/null)
+    if [ ! -z "$pid" ]; then
+        kill -9 $pid 2>/dev/null || true
+    fi
+done
+sleep 1
+
 # Initialize pristine log buffer
 echo "--- NovaOps Session Started at $(date) ---" > novaops.log
 
