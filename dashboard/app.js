@@ -101,6 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentSort = 'newest';
     let currentPage = 1;
     const itemsPerPage = 3; // Kept at 3 to avoid vertical crowding
+    let currentLogFilter = 'all';
 
     // Fetch and render incidents
     async function fetchIncidents() {
@@ -224,6 +225,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- View 2: Live Logs Terminal ---
     
+    // Detect which service a log line came from
+    function getLogSource(line) {
+        if (line.includes('[Nova-Agent]') || line.includes('Nova-Agent') || line.includes('[Nova]')) return 'Nova-Agent';
+        if (line.includes('[Event-API]') || line.includes('Event-API') || line.includes('uvicorn')) return 'Event-API';
+        if (line.includes('[K8s-Prom]') || line.includes('K8s-Prom') || line.includes('kubectl')) return 'K8s-Prom';
+        if (line.includes('[Dashboard]') || line.includes('Dashboard') || line.includes('http.server')) return 'Dashboard';
+        return 'other';
+    }
+
     // Simple ANSI to CSS parser for terminal colors
     function formatAnsiLog(line) {
         if (!line) return '';
@@ -257,14 +267,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 let htmlOutput = '';
                 result.logs.forEach(line => {
-                    htmlOutput += `<p>${formatAnsiLog(line)}</p>`;
+                    const source = getLogSource(line);
+                    const hidden = (currentLogFilter !== 'all' && source !== currentLogFilter) ? ' style="display:none"' : '';
+                    htmlOutput += `<p data-source="${source}"${hidden}>${formatAnsiLog(line)}</p>`;
                 });
                 
-                // Only update DOM if the content actually changed to prevent scroll jumping
-                if (terminalOutput.innerHTML !== htmlOutput) {
+                // Only update DOM if the log lines actually changed (ignore filter state)
+                const newLogCount = result.logs.length;
+                if (terminalOutput.dataset.logCount !== String(newLogCount) || terminalOutput.dataset.lastLog !== result.logs[result.logs.length - 1]) {
                     const isScrolledToBottom = terminalOutput.scrollHeight - terminalOutput.clientHeight <= terminalOutput.scrollTop + 50;
                     
                     terminalOutput.innerHTML = htmlOutput || '<p>No logs found...</p>';
+                    terminalOutput.dataset.logCount = newLogCount;
+                    terminalOutput.dataset.lastLog = result.logs[result.logs.length - 1] || '';
                     
                     // Auto-scroll to bottom if they were already at the bottom
                     if (isScrolledToBottom) {
@@ -276,6 +291,19 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Failed to fetch logs:', e);
             terminalOutput.innerHTML = `<p class="ansi-red">Failed to connect to backend log stream.</p>`;
         }
+    }
+
+    // Apply log filter without re-fetching
+    function applyLogFilter(filter) {
+        currentLogFilter = filter;
+        const allLines = terminalOutput.querySelectorAll('p[data-source]');
+        allLines.forEach(p => {
+            if (filter === 'all' || p.dataset.source === filter) {
+                p.style.display = '';
+            } else {
+                p.style.display = 'none';
+            }
+        });
     }
 
     // --- Event Listeners ---
@@ -299,6 +327,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Force scroll to bottom on first open
                 setTimeout(() => { terminalOutput.scrollTop = terminalOutput.scrollHeight; }, 100);
             }
+        });
+    });
+
+    // Log filter buttons
+    document.querySelectorAll('[data-log-filter]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('[data-log-filter]').forEach(b => b.classList.remove('active'));
+            e.currentTarget.classList.add('active');
+            applyLogFilter(e.currentTarget.getAttribute('data-log-filter'));
         });
     });
 
