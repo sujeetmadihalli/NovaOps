@@ -6,6 +6,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent.orchestrator import AgentOrchestrator
 from api.slack_notifier import SlackNotifier
+from api.history_db import IncidentHistoryDB
 import json
 import time
 
@@ -58,6 +59,16 @@ def run_test_scenario(scenario_name: str, mock_data: dict, expected_tool: str):
             print(f"\n✅ PASS: Agent correctly chose '{tool_chosen}' for {scenario_name}.")
         else:
             print(f"\n❌ FAIL: Expected '{expected_tool}', but Agent chose '{tool_chosen}'.")
+            
+        # Write to Dashboard History Database
+        db = IncidentHistoryDB()
+        db.log_incident(
+            incident_id=f"INC-{int(time.time())}",
+            service_name="payment-service",
+            alert_name=scenario_name,
+            analysis=result.get("analysis"),
+            proposed_action=result.get("proposed_action")
+        )
     else:
         print(f"\n❌ FAIL: Agent failed to generate a plan.")
 
