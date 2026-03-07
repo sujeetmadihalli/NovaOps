@@ -10,6 +10,8 @@ from agent.knowledge_base import KnowledgeBaseRAG
 from agent.pdf_generator import PIRPDFGenerator
 from api.slack_notifier import SlackNotifier
 from api.history_db import IncidentHistoryDB
+from Agent_Jury.jury_orchestrator import JuryOrchestrator
+from Agent_Jury.escalation_gate import EscalationGate
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -27,6 +29,7 @@ app.add_middleware(
 
 # Setup components for Production (Live K8s & Nova LLM)
 agent = AgentOrchestrator(mock_sensors=False)
+jury = JuryOrchestrator(mock_sensors=False)
 notifier = SlackNotifier(use_mock=False)
 db = IncidentHistoryDB()
 pir_gen = PIRGenerator()
@@ -82,6 +85,78 @@ def trigger_agent_loop(payload: AlertPayload):
             proposed_action={"tool": "noop_require_human", "parameters": {}}
         )
         
+def trigger_jury_loop(payload: AlertPayload):
+    """
+    Background task to run the Jury Agent pipeline asynchronously.
+    Handles all escalation and silent-failure cases explicitly —
+    nothing is silently dropped.
+    """
+    logger.info(f"==== Jury Convening for Incident {payload.incident_id} ====")
+
+    try:
+        result = jury.run(
+            alert_name=payload.alert_name,
+            service_name=payload.service_name,
+            namespace=payload.namespace
+        )
+
+        # Log to DB regardless of escalation outcome
+        db.log_incident(
+            incident_id=payload.incident_id,
+            service_name=payload.service_name,
+            alert_name=payload.alert_name,
+            analysis=result.get("analysis"),
+            proposed_action=result.get("proposed_action")
+        )
+
+        if result.get("should_escalate"):
+            # Build escalation summary and send to Slack for human review
+            gate = EscalationGate()
+            escalation = gate.build_escalation_summary(
+                incident_id=payload.incident_id,
+                alert_name=payload.alert_name,
+                service_name=payload.service_name,
+                judge_verdict=result.get("judge_verdict", {}),
+                juror_verdicts=result.get("juror_verdicts", []),
+                gate_result=result.get("gate_result", {})
+            )
+            logger.warning(f"[Jury] Escalating incident {payload.incident_id} to human review.")
+            notifier.send_incident_plan(
+                incident_id=payload.incident_id,
+                analysis=f"JURY ESCALATION — Human Review Required\n\n{escalation['message']}\n\nJury Root Cause: {escalation['judge_root_cause']}\n\nJuror Summary:\n{escalation['juror_summary']}",
+                proposed_action=escalation.get("proposed_action", {"tool": "noop_require_human", "parameters": {}})
+            )
+        else:
+            # Verdict is confident and consistent — send for standard human approval
+            logger.info(f"[Jury] Verdict cleared escalation gate. Sending for human approval.")
+            notifier.send_incident_plan(
+                incident_id=payload.incident_id,
+                analysis=result.get("analysis"),
+                proposed_action=result.get("proposed_action")
+            )
+
+    except Exception as e:
+        logger.critical(f"FATAL: Jury Orchestrator crashed entirely. Reason: {str(e)}")
+        # Dead man's snitch — jury is offline, page humans immediately
+        notifier.send_incident_plan(
+            incident_id=payload.incident_id,
+            analysis=f"CRITICAL: The Jury Agent pipeline crashed.\n\nException: {str(e)}\n\nHuman SRE intervention required immediately.",
+            proposed_action={"tool": "noop_require_human", "parameters": {}}
+        )
+
+
+@app.post("/webhook/jury")
+async def jury_webhook(payload: AlertPayload, background_tasks: BackgroundTasks):
+    """
+    Webhook receiver that routes the incident through the 4-juror + judge pipeline.
+    Every outcome — confident verdict, uncertain verdict, or crash — is escalated
+    to a human via Slack. Nothing is silently dropped.
+    """
+    logger.info(f"[Jury] Received incident for jury deliberation: {payload.service_name}")
+    background_tasks.add_task(trigger_jury_loop, payload)
+    return {"status": "accepted", "message": "Incident assigned to Jury Agent"}
+
+
 @app.get("/api/incidents")
 def get_incident_history():
     """

@@ -19,7 +19,7 @@ You are equipped with Amazon Nova's extended reasoning capabilities.
 You will receive a massive dump of context including Recent Logs, Metrics, Kubernetes Cluster State, Recent Deployments, and Relevant Runbooks.
 
 Analyze the context to determine the root cause of the outage.
-Do not hallucinate. If you are unsure, request to query more logs.
+Do not hallucinate.
 
 1. First, think step-by-step about the root cause inside <thinking> tags.
 2. Then, output your response STRICTLY as a JSON block wrapped in ```json ... ``` with the following structure:
@@ -34,11 +34,13 @@ Do not hallucinate. If you are unsure, request to query more logs.
 ```
 
 Available Tools:
-1. `rollback_deployment` - Rolls back a recent bad code change constraint. (Params: service_name)
-2. `scale_deployment` - Increases replicas to handle load. (Params: service_name, target_replicas)
-3. `restart_pods` - Clears deadlocks or cache by restarting pods. (Params: service_name)
-4. `query_more_logs` - Fetches older logs if current context is insufficient. (Params: service_name, minutes_back)
-5. `noop_require_human` - If the situation is too complex or requires database manipulation, use this tool to safely hand off.
+1. `rollback_deployment` - Rolls back a recent bad code change. Use when a recent deployment is clearly the cause. (Params: service_name)
+2. `scale_deployment` - Increases replicas to handle load. Use when CPU is saturated and the service is healthy but overwhelmed. (Params: service_name, target_replicas)
+3. `restart_pods` - Clears deadlocks or cache by restarting pods. Use when code is fine but pods are in a bad runtime state. (Params: service_name)
+4. `query_more_logs` - Fetches older logs and re-invokes you with the enriched context. Use ONLY when the root cause is genuinely ambiguous and older history would change the diagnosis. Do NOT use if the error is already clear. You have 3 attempts total — query_more_logs consumes one of them, so you will have at most 2 remaining attempts to commit to a final action after receiving the extended logs. (Params: service_name, minutes_back)
+5. `noop_require_human` - Hand off to a human SRE. Use when: the incident is caused by an external/third-party service outage, a DNS/network failure outside the cluster, a security breach, an unknown error type that none of the other tools can fix, or the situation is too complex to auto-remediate safely.
+
+If the context already contains a section labelled "EXTENDED LOGS", query_more_logs has already run — do NOT choose it again. Commit to a remediation action on this attempt.
 """
 
 VALID_TOOLS = ["rollback_deployment", "scale_deployment", "restart_pods", "query_more_logs", "noop_require_human"]
@@ -133,10 +135,23 @@ class AgentOrchestrator:
                     logger.warning(f"Attempt {attempt+1}: LLM hallucinated invalid tool '{tool}'. Forcing self-correction.")
                     current_context += f"\n\nERROR IN PREVIOUS ATTEMPT: You chose an invalid tool '{tool}'. You MUST choose from this exact list: {VALID_TOOLS}."
                     continue
-                    
+
+                # ReAct feedback loop: execute query_more_logs and re-reason with enriched context
+                if tool == "query_more_logs":
+                    minutes_back = action.get("parameters", {}).get("minutes_back", 60)
+                    logger.info(f"[ReAct] Agent requested extended logs (minutes_back={minutes_back}). Fetching and re-reasoning...")
+                    extended_logs = self.logs_agg.get_recent_errors(service_name, minutes_back=minutes_back)
+                    current_context += (
+                        f"\n\n--- EXTENDED LOGS (fetched {minutes_back} minutes back per your request) ---\n"
+                        f"{json.dumps(extended_logs, indent=2)}\n\n"
+                        f"You now have additional log history. Re-analyze and provide a final remediation action. "
+                        f"Do NOT choose query_more_logs again — commit to a decision."
+                    )
+                    continue
+
                 logger.info(f"Agent Hypothesis: {decision.get('root_cause_analysis')}")
                 logger.info(f"Agent proposed action: {action}")
-                
+
                 return {
                     "status": "plan_ready",
                     "analysis": decision.get("root_cause_analysis"),
