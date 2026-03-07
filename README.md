@@ -1,6 +1,6 @@
 # NovaOps: Autonomous Production Incident Resolution Agent
 
-**NovaOps** is an autonomous, event-driven agent that transitions production incidents from "alerting" directly to "resolving." Built around the **300K context window of Amazon Nova Pro**, it ingests sprawling diagnostic data — logs, metrics, Kubernetes events, git histories, reasons about root causes using Chain-of-Thought prompting, and proposes safe, constrained remediations in seconds.
+**NovaOps** is an autonomous, event-driven agent that transitions production incidents from "alerting" directly to "resolving." Built around the **300K context window of Amazon Nova Pro**, it ingests sprawling diagnostic data-logs, metrics, Kubernetes events, git histories, reasons about root causes using Chain-of-Thought prompting, and proposes safe, constrained remediations in seconds.
 
 > **Human MTTR:** ~15-20 minutes (wake up, VPN, triage across 5 dashboards)
 > **NovaOps MTTR:** ~10-15 seconds (parallel aggregation + LLM reasoning + Slack dispatch)
