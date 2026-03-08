@@ -149,11 +149,42 @@ def run(alert_text: str, executor: RemediationExecutor | None = None) -> dict:
     )
     print(f"[*] Report saved: {report_path}")
 
-    # --- Governance gate ---
+    # --- Stage 2: Jury Validation (independent blind deliberation) ---
+    from Agent_Jury.jury_orchestrator import JuryOrchestrator
+    from pipeline.convergence import check_convergence
+
+    use_mock_env = os.environ.get("NOVAOPS_USE_MOCK", "1").strip().lower() not in {"0", "false", "no", "off"}
+    jury_service = (war_room.triage.service_name if (war_room.triage and war_room.triage.service_name) else "unknown")
+    jury_namespace = (war_room.triage.namespace if (war_room.triage and war_room.triage.namespace) else "default")
+
+    print("[*] Convening jury for independent blind validation...")
+    jury = JuryOrchestrator(mock_sensors=use_mock_env, mock_llm=use_mock_env)
+    jury_result = jury.run(alert_name=alert_text, service_name=jury_service, namespace=jury_namespace)
+    jury_action = (jury_result.get("proposed_action") or {}).get("tool", "noop_require_human")
+    jury_conf = jury_result.get("confidence", 0.0)
+    print(f"[*] Jury: action={jury_action} conf={jury_conf:.2f} escalate={jury_result.get('should_escalate')}")
+
+    # --- Stage 3: Convergence Check ---
+    convergence = check_convergence(proposed_action, jury_result, war_room)
+    status_label = "AGREE" if convergence["agree"] else "DISAGREE"
+    print(f"[*] Convergence: {status_label} — adjusted_confidence={convergence['adjusted_confidence']:.2f}")
+
+    AuditLog(incident_id).log("CONVERGENCE_CHECK", actor="SYSTEM", data={
+        "agree": convergence["agree"],
+        "war_room_action": convergence["war_room_action"],
+        "jury_action": convergence["jury_action"],
+        "war_room_confidence": convergence["war_room_confidence"],
+        "jury_confidence": convergence["jury_confidence"],
+        "adjusted_confidence": convergence["adjusted_confidence"],
+        "confidence_source": convergence["confidence_source"],
+        "summary": convergence["summary"],
+    })
+
+    # --- Governance gate (receives convergence-adjusted confidence) ---
     gate = GovernanceGate(executor)
     gov_result = gate.evaluate(
         incident_id,
-        {"proposed_action": proposed_action, "domain": domain},
+        {"proposed_action": proposed_action, "domain": domain, "convergence": convergence},
         war_room,
     )
     generate_governance_report(incident_id)

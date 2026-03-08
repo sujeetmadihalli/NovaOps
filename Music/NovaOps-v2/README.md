@@ -1,8 +1,8 @@
 # NovaOps v2
 
-**Autonomous multi-agent SRE war room powered by Amazon Nova 2 Lite.**
+**Autonomous multi-agent SRE war room powered by Amazon Nova 2 Lite — with independent jury validation.**
 
-NovaOps v2 responds to production alerts end-to-end: it triages the incident, dispatches four specialist analysts in parallel, reasons over their findings, validates the reasoning path with an adversarial critic, proposes a remediation action, and gates that action through a policy engine before any execution touches infrastructure. Every decision is logged to an append-only audit trail. Human override is always available.
+NovaOps v2 responds to production alerts end-to-end: it triages the incident, dispatches four specialist analysts in parallel, reasons over their findings, validates the reasoning path with an adversarial critic, then runs a completely independent jury validation before gating the action through a policy engine. Every decision is logged to an append-only audit trail. Human override is always available.
 
 Built for the Amazon Nova AI Hackathon 2026.
 
@@ -10,34 +10,97 @@ Built for the Amazon Nova AI Hackathon 2026.
 
 ## How It Works
 
+The pipeline has three stages. The War Room and the Jury run independently — the Jury never sees the War Room's reasoning. Their conclusions are compared in the Convergence Check before the Governance Gate makes the final call.
+
 ```
-Alert
-  |
-  v
-Triage Agent          -- classifies domain, severity (P1-P4), service
-  |
-  +-- Log Analyst -------+
-  +-- Metrics Analyst ---|-- run in parallel
-  +-- K8s Inspector  ----|
-  +-- GitHub Analyst ----+
-  |
-  v
-Root Cause Reasoner   -- synthesises findings, forms ranked hypotheses
-  |
-  v
-Critic Agent          -- adversarial review; can reject and loop (max 3x)
-  |
-  v
-Remediation Planner   -- proposes one of: rollback / scale / restart / noop
-  |
-  v
-Governance Gate       -- evaluates risk score + policy; ALLOW_AUTO | REQUIRE_APPROVAL | DENY
-  |
-  v
-Executor              -- runs remediation tool (or waits for human approval)
+Alert (POST /webhook/pagerduty)
+  │
+  ▼
+┌──────────────────────────────────────────────────────────┐
+│  STAGE 1: WAR ROOM  (deep sequential investigation)      │
+│                                                          │
+│  Triage Agent          classifies domain, severity, svc  │
+│    │                                                     │
+│    ├── Log Analyst ────────────────────────┐             │
+│    ├── Metrics Analyst ────────────────────┤ parallel    │
+│    ├── K8s Inspector ──────────────────────┤             │
+│    └── GitHub Analyst ─────────────────────┘             │
+│    │                                                     │
+│  Root Cause Reasoner   synthesises findings              │
+│    │                                                     │
+│  Critic Agent          adversarial review, loop x3 max   │
+│    │                                                     │
+│  Remediation Planner   proposes rollback/scale/restart   │
+└────────────────────────────┬─────────────────────────────┘
+                             │ proposed_action + domain
+                             │
+                             │ raw context only (no war room reasoning)
+                             ▼
+┌──────────────────────────────────────────────────────────┐
+│  STAGE 2: JURY VALIDATION  (independent blind panel)     │
+│                                                          │
+│  4 specialist jurors deliberate in parallel              │
+│  on raw incident context — no war room influence         │
+│                                                          │
+│  ┌────────────────┐  ┌──────────────────────────────┐   │
+│  │ Log Analyst    │  │ Infra Specialist              │   │
+│  │ logs, OOM,     │  │ K8s pod health, CPU/mem       │   │
+│  │ crash traces   │  │ OOMKilled, scaling signals    │   │
+│  └────────────────┘  └──────────────────────────────┘   │
+│  ┌────────────────┐  ┌──────────────────────────────┐   │
+│  │ Deploy         │  │ Anomaly Specialist            │   │
+│  │ Specialist     │  │ Layer 1: RAG signal           │   │
+│  │ git commits,   │  │ Layer 2: regex pattern scan   │   │
+│  │ config regs    │  │ Layer 3: LLM residual         │   │
+│  └────────────────┘  └──────────────────────────────┘   │
+│                │                                         │
+│             Judge LLM — synthesises 4 verdicts           │
+│             Escalation Gate — 6 safety checks            │
+└────────────────────────────┬─────────────────────────────┘
+                             │
+                             ▼
+┌──────────────────────────────────────────────────────────┐
+│  STAGE 3: CONVERGENCE CHECK                              │
+│                                                          │
+│  War Room action == Jury action?                         │
+│                                                          │
+│  AGREE  + no jury escalation                            │
+│    → confidence boosted (+0.15)                          │
+│    → GovernanceGate may ALLOW_AUTO                       │
+│                                                          │
+│  DISAGREE or jury escalation                             │
+│    → confidence penalised (-0.30)                        │
+│    → GovernanceGate forces REQUIRE_APPROVAL              │
+│    → Slack shows both perspectives with full reasoning   │
+└────────────────────────────┬─────────────────────────────┘
+                             │ adjusted_confidence
+                             ▼
+┌──────────────────────────────────────────────────────────┐
+│  GOVERNANCE GATE                                         │
+│  Risk score + policy → ALLOW_AUTO | REQUIRE_APPROVAL     │
+│  Audit trail updated with CONVERGENCE_CHECK event        │
+└──────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+                       Executor / Human Approval
 ```
 
 All agent outputs are validated against typed schemas and written to `plans/{incident_id}/` as inspectable JSON artifacts.
+
+---
+
+## Why Two Pipelines?
+
+The War Room and Jury solve different failure modes:
+
+| Risk | War Room alone | Jury alone | Hybrid |
+|---|---|---|---|
+| Triage misclassifies domain | Propagates to all agents | Immune | Jury catches blind spot |
+| Weak hypothesis | Critic may catch it | No self-correction | Critic + independent jury |
+| Confident but wrong | Passes gate | Passes gate | Both must agree |
+| Unknown / external incident | Anomaly specialist | Anomaly specialist | Double-validated |
+
+The **key design principle**: jurors receive only the raw incident context — not the War Room's reasoning. This preserves full independence and prevents groupthink.
 
 ---
 
@@ -50,7 +113,9 @@ Every proposed remediation passes through a policy engine before execution.
 - Severity weight: P1=30, P2=20, P3=10, P4=5
 - Confidence penalty: `max(0, (0.75 - confidence) * 40)` for low-confidence decisions
 
-**Policy decisions (first match wins, evaluated in priority order):**
+When the Convergence Check runs, the adjusted confidence replaces the raw war room confidence in the risk calculation — meaning disagreement between pipelines raises the risk score and pushes toward `REQUIRE_APPROVAL`.
+
+**Policy decisions (first match wins):**
 
 | Policy | Condition | Decision |
 |---|---|---|
@@ -62,28 +127,50 @@ Every proposed remediation passes through a policy engine before execution.
 | p2_scale_high_confidence | P2 + scale + conf >= 0.85 | ALLOW_AUTO |
 | default_require_approval | (catch-all) | REQUIRE_APPROVAL |
 
-**Confidence precedence (deterministic):**
-`critic.confidence > root_cause.confidence_overall > top_hypothesis.confidence > 0.0`
+**Confidence precedence:**
+`convergence.adjusted_confidence > critic.confidence > root_cause.confidence_overall > top_hypothesis.confidence > 0.0`
 
 **Artifacts written per incident:**
 - `governance.json` — full decision record
 - `governance_report.md` — human-readable summary with risk bar and audit table
-- `audit.jsonl` — append-only event log (TRIAGE_COMPLETE, HYPOTHESIS_FORMED, CRITIC_VERDICT, GOVERNANCE_DECISION, EXECUTION_STARTED, EXECUTION_COMPLETE, HUMAN_OVERRIDE, ...)
+- `audit.jsonl` — append-only event log including `CONVERGENCE_CHECK` event
+
+---
+
+## Audit Trail Events
+
+Every incident generates a complete, ordered audit trail in `plans/{incident_id}/audit.jsonl`:
+
+| Event | Actor | When |
+|---|---|---|
+| `ALERT_RECEIVED` | SYSTEM | Webhook received |
+| `TRIAGE_COMPLETE` | SYSTEM | Domain, severity, service classified |
+| `HYPOTHESIS_FORMED` | SYSTEM | Root cause ranked |
+| `CRITIC_VERDICT` | SYSTEM | Adversarial review completed |
+| `CONVERGENCE_CHECK` | SYSTEM | War Room vs Jury compared |
+| `GOVERNANCE_DECISION` | SYSTEM | Policy evaluated, risk scored |
+| `EXECUTION_STARTED` | SYSTEM/HUMAN | Tool execution begins |
+| `EXECUTION_COMPLETE` | SYSTEM/HUMAN | Tool execution result |
+| `HUMAN_OVERRIDE` | HUMAN | Manual approval via `/approve` |
 
 ---
 
 ## Repository Layout
 
 ```
-agents/         orchestration graph, prompts, schemas, artifacts, PIR generation
-aggregator/     log, metric, Kubernetes, and GitHub data fetchers (live + mock)
+agents/         War Room orchestration graph, prompts, schemas, artifacts, PIR generation
+Agent_Jury/     Jury pipeline — 4 specialist jurors + Judge + Escalation Gate
+  jurors/       Log Analyst, Infra Specialist, Deployment Specialist, Anomaly Specialist
+agent/          nova_client.py — Bedrock client used by Jury jurors
+pipeline/       convergence.py — War Room vs Jury agreement check
+aggregator/     Log, metric, Kubernetes, and GitHub data fetchers (live + mock)
 api/            FastAPI server, SQLite history DB, Slack notifier, PagerDuty webhook
 governance/     GovernanceGate, PolicyEngine, AuditLog, report generator
-tools/          tool wrappers, RemediationExecutor, knowledge retrieval
+tools/          Tool wrappers, RemediationExecutor, knowledge retrieval
 evaluation/     15 scenario harness covering 6 failure domains
-skills/         domain playbooks (oom, traffic_surge, deadlock, config_drift, ...)
-runbooks/       learned PIR content for RAG
-plans/          generated investigation artifacts (git-ignored)
+skills/         Domain playbooks (oom, traffic_surge, deadlock, config_drift, ...)
+runbooks/       Learned PIR content for RAG
+plans/          Generated investigation artifacts (git-ignored)
 tests/          37 unit tests
 ```
 
@@ -114,8 +201,8 @@ python -m agents "P2 traffic surge on checkout-service in prod"
 
 ```bash
 uvicorn api.server:app --reload
-# POST /api/webhook/pagerduty  — trigger investigation
-# GET  /api/incidents/{id}     — fetch status + artifacts
+# POST /webhook/pagerduty           — trigger full 3-stage investigation
+# GET  /api/incidents/{id}          — fetch status + artifacts
 # POST /api/incidents/{id}/approve  — human approval → governance gate → execution
 # GET  /api/governance/{id}/decision
 # GET  /api/governance/{id}/audit
@@ -127,7 +214,7 @@ uvicorn api.server:app --reload
 
 | Variable | Default | Description |
 |---|---|---|
-| `NOVAOPS_USE_MOCK` | `true` | Offline mode — no Bedrock calls |
+| `NOVAOPS_USE_MOCK` | `true` | Offline mode — no Bedrock calls, controls War Room and Jury |
 | `NOVA_MODEL_ID` | `us.amazon.nova-2-lite-v1:0` | Bedrock inference profile |
 | `AWS_DEFAULT_REGION` | `us-east-1` | Bedrock region |
 | `AWS_BEARER_TOKEN_BEDROCK` | — | Bearer token for Bedrock access |
@@ -166,9 +253,9 @@ Each investigation writes to `plans/{incident_id}/`:
 | File | Contents |
 |---|---|
 | `report.md` | Full investigation report |
-| `governance.json` | Policy decision, risk score, confidence |
+| `governance.json` | Policy decision, risk score, confidence, convergence source |
 | `governance_report.md` | Human-readable governance summary |
-| `audit.jsonl` | Append-only event log |
+| `audit.jsonl` | Append-only event log including CONVERGENCE_CHECK |
 | `structured.json` | Typed agent outputs |
 | `validation.json` | Schema validation scores |
 | `trace.json` | Failure metadata (if investigation failed) |

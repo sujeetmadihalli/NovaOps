@@ -227,7 +227,15 @@ class GovernanceGate:
     # ------------------------------------------------------------------
 
     def _build_context(self, incident_id: str, incident: dict, war_room) -> GovernanceContext:
-        confidence, confidence_source = resolve_confidence(war_room)
+        # If the convergence check ran, use its adjusted confidence instead of
+        # deriving it from the war room alone. Agreement boosts it; disagreement
+        # lowers it — ensuring the policy engine sees the full dual-pipeline signal.
+        convergence = incident.get("convergence")
+        if convergence:
+            confidence = convergence["adjusted_confidence"]
+            confidence_source = convergence["confidence_source"]
+        else:
+            confidence, confidence_source = resolve_confidence(war_room)
         severity = "P2"
         if war_room.triage and war_room.triage.severity:
             severity = war_room.triage.severity
