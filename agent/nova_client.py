@@ -15,15 +15,20 @@ class NovaClient:
     def __init__(self, region: str = "us-east-1", model_id: str = "amazon.nova-pro-v1:0", use_mock: bool = False):
         self.model_id = model_id
         self.use_mock = use_mock
+        self.region = region
+        self.client = None
         
         # Load the newly created .env file automatically
         load_dotenv()
         
-        try:
-            self.client = boto3.client('bedrock-runtime', region_name=region)
-        except Exception as e:
-            logger.warning(f"Could not initialize Bedrock client: {e}")
-            self.use_mock = True
+    def _get_client(self):
+        if not self.client and not self.use_mock:
+            try:
+                self.client = boto3.client('bedrock-runtime', region_name=self.region)
+            except Exception as e:
+                logger.warning(f"Could not initialize Bedrock client: {e}")
+                self.use_mock = True
+        return self.client
             
     def invoke(self, system_prompt: str, context_payload: str, max_tokens: int = 1000) -> Dict[str, Any]:
         """
@@ -46,7 +51,11 @@ class NovaClient:
                 }
             })
             
-            response = self.client.invoke_model(
+            client = self._get_client()
+            if self.use_mock: # In case the lazy-load failed
+                return self._mock_invocation()
+                
+            response = client.invoke_model(
                 body=body,
                 modelId=self.model_id,
                 accept='application/json',

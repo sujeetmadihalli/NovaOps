@@ -9,8 +9,12 @@ logger = logging.getLogger(__name__)
 class LogsAggregator:
     def __init__(self, use_mock: bool = False):
         self.use_mock = use_mock
-        if not use_mock:
+        self.client = None
+        
+    def _get_client(self):
+        if not self.client and not self.use_mock:
             self.client = boto3.client('logs', region_name='us-east-1')
+        return self.client
             
     def get_recent_errors(self, service_name: str, minutes_back: int = 15) -> List[Dict]:
         """
@@ -23,7 +27,8 @@ class LogsAggregator:
             # Note: This requires proper AWS credentials in the environment
             start_time = int((datetime.now() - timedelta(minutes=minutes_back)).timestamp() * 1000)
             
-            response = self.client.filter_log_events(
+            client = self._get_client()
+            response = client.filter_log_events(
                 logGroupName=f"/aws/lambda/{service_name}", # using lambda as default for example
                 filterPattern='?ERROR ?FATAL ?Exception',
                 startTime=start_time

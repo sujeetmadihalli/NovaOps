@@ -2,6 +2,8 @@ import os
 import re
 import logging
 
+import boto3
+from botocore.exceptions import ClientError
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -15,15 +17,29 @@ PIR_OUTPUT_DIR = "runbooks/pir_reports"
 
 
 class PIRPDFGenerator:
-    def __init__(self, output_dir: str = PIR_OUTPUT_DIR):
-        self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
+    def __init__(self, endpoint_url: str = None):
+        self.endpoint_url = endpoint_url or os.environ.get('S3_ENDPOINT', 'http://localhost:4566')
+        self.bucket_name = "novaops-pir-reports"
+        self.s3_client = None
+
+    def _get_s3_client(self):
+        if not self.s3_client:
+            self.s3_client = boto3.client(
+                's3',
+                endpoint_url=self.endpoint_url,
+                region_name='us-east-1',
+                aws_access_key_id='test',
+                aws_secret_access_key='test'
+            )
+        return self.s3_client
 
     def generate(self, incident_id: str, pir_text: str) -> str:
-        """Render PIR markdown to a styled PDF. Returns the saved file path."""
-        filepath = os.path.join(self.output_dir, f"PIR_{incident_id}.pdf")
+        """Render PIR markdown to a styled PDF and upload to S3. Returns the S3 object key."""
+        filename = f"PIR_{incident_id}.pdf"
+        tmp_filepath = f"/tmp/{filename}"
+        
         doc = SimpleDocTemplate(
-            filepath,
+            tmp_filepath,
             pagesize=A4,
             rightMargin=20 * mm,
             leftMargin=20 * mm,
@@ -33,8 +49,21 @@ class PIRPDFGenerator:
         styles = self._build_styles()
         story = self._parse_markdown(pir_text, styles)
         doc.build(story)
-        logger.info(f"PIR PDF generated: {filepath}")
-        return filepath
+        
+        # Upload to S3
+        try:
+            client = self._get_s3_client()
+            client.upload_file(tmp_filepath, self.bucket_name, filename)
+            logger.info(f"PIR PDF uploaded to S3: s3://{self.bucket_name}/{filename}")
+            
+            # Clean up local tmp file
+            if os.path.exists(tmp_filepath):
+                os.remove(tmp_filepath)
+                
+            return filename
+        except ClientError as e:
+            logger.error(f"Failed to upload PIR to S3: {e}")
+            return ""
 
     def _build_styles(self) -> dict:
         base = getSampleStyleSheet()

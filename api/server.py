@@ -1,4 +1,5 @@
 import logging
+import os
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -10,6 +11,8 @@ from agent.knowledge_base import KnowledgeBaseRAG
 from agent.pdf_generator import PIRPDFGenerator
 from api.slack_notifier import SlackNotifier
 from api.history_db import IncidentHistoryDB
+import boto3
+from botocore.config import Config
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -26,12 +29,19 @@ app.add_middleware(
 )
 
 # Setup components for Production (Live K8s & Nova LLM)
+logger.info("Initializing AgentOrchestrator...")
 agent = AgentOrchestrator(mock_sensors=False)
+logger.info("Initializing SlackNotifier...")
 notifier = SlackNotifier(use_mock=False)
+logger.info("Initializing IncidentHistoryDB...")
 db = IncidentHistoryDB()
+logger.info("Initializing PIRGenerator...")
 pir_gen = PIRGenerator()
+logger.info("Initializing KnowledgeBaseRAG...")
 kb = KnowledgeBaseRAG()
+logger.info("Initializing PIRPDFGenerator...")
 pdf_gen = PIRPDFGenerator()
+logger.info("All components initialized.")
 
 class AlertPayload(BaseModel):
     alert_name: str
@@ -98,7 +108,8 @@ def get_live_logs():
     """
     try:
         from collections import deque
-        with open("novaops.log", "r", encoding="utf-8") as f:
+        log_path = os.environ.get('NOVAOPS_LOG_PATH', 'novaops.log')
+        with open(log_path, "r", encoding="utf-8") as f:
             # Grab all lines and filter out noisy dashboard polling lines
             all_lines = f.readlines()
         
@@ -136,8 +147,8 @@ def generate_pir(incident_id: str):
     runbook = kb.search_relevant_runbook(f"{incident['alert_name']} {incident['service_name']}")
     report = pir_gen.generate(incident, runbook_content=runbook)
     db.save_pir(incident_id, report)
-    pdf_path = pdf_gen.generate(incident_id, report)
-    logger.info(f"PIR PDF saved: {pdf_path}")
+    s3_key = pdf_gen.generate(incident_id, report)
+    logger.info(f"PIR PDF saved to S3: {s3_key}")
 
     # Self-Learning: Save PIR as a new runbook if this is a novel incident type
     if not kb.has_similar_runbook(incident["alert_name"], incident["service_name"]):
@@ -146,7 +157,7 @@ def generate_pir(incident_id: str):
     else:
         logger.info(f"Runbook already covers this incident type. Skipping auto-save.")
 
-    return {"status": "success", "incident_id": incident_id, "report": report, "pdf_path": pdf_path}
+    return {"status": "success", "incident_id": incident_id, "report": report, "pdf_path": s3_key}
 
 
 @app.get("/api/incidents/{incident_id}/report")
@@ -160,6 +171,37 @@ def get_pir(incident_id: str):
     if not incident.get("pir_report"):
         raise HTTPException(status_code=404, detail="No PIR has been generated for this incident yet")
     return {"status": "success", "incident_id": incident_id, "report": incident["pir_report"]}
+
+
+@app.get("/api/download-pdf")
+def get_pdf_download_url(key: str):
+    """
+    Generates an AWS S3 presigned URL for downloading the PIR PDF.
+    Points to LocalStack S3 in this simulated environment.
+    """
+    s3_endpoint = os.environ.get('S3_ENDPOINT', 'http://localhost:4566')
+    s3_client = boto3.client(
+        's3',
+        endpoint_url=s3_endpoint,
+        region_name='us-east-1',
+        aws_access_key_id='test',
+        aws_secret_access_key='test',
+        config=Config(signature_version='s3v4')
+    )
+    try:
+        url = s3_client.generate_presigned_url(
+            ClientMethod='get_object',
+            Params={
+                'Bucket': 'novaops-pir-reports',
+                'Key': key,
+                'ResponseContentDisposition': f'attachment; filename="{key}"'
+            },
+            ExpiresIn=3600 # 1 hour
+        )
+        return {"status": "success", "download_url": url}
+    except Exception as e:
+        logger.error(f"Failed to generate presigned URL: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate download link")
 
 
 @app.get("/health")

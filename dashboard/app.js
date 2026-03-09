@@ -1,9 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const API_URL = 'http://127.0.0.1:8000/api/incidents';
+    const API_URL = 'http://127.0.0.1:8082/api/incidents';
     const pirModal = document.getElementById('pir-modal');
     const pirLoading = document.getElementById('pir-loading');
     const pirContent = document.getElementById('pir-content');
     const pirCopyBtn = document.getElementById('pir-copy-btn');
+    const pirDownloadBtn = document.getElementById('pir-download-btn');
 
     // PIR Modal helpers
     function openPirModal() {
@@ -11,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pirLoading.style.display = 'flex';
         pirContent.style.display = 'none';
         pirCopyBtn.style.display = 'none';
+        pirDownloadBtn.style.display = 'none'; // Ensure download button is hidden on open
         pirContent.textContent = '';
     }
 
@@ -34,12 +36,54 @@ document.addEventListener('DOMContentLoaded', () => {
             .join('');
     }
 
-    function showPirContent(text) {
+    function showPirContent(text, pdfPath) {
         pirLoading.style.display = 'none';
         pirContent.style.display = 'block';
         pirCopyBtn.style.display = 'inline-flex';
+        
+        if (pdfPath) {
+            pirDownloadBtn.style.display = 'inline-flex';
+            pirDownloadBtn.dataset.pdfPath = pdfPath;
+            pirDownloadBtn.onclick = () => downloadFromS3(pdfPath);
+        } else {
+            pirDownloadBtn.style.display = 'none';
+        }
+        
         pirContent.innerHTML = renderMarkdown(text);
         pirContent._rawText = text;
+    }
+
+    async function downloadFromS3(s3Key) {
+        try {
+            const btn = pirDownloadBtn;
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Downloading...';
+            btn.disabled = true;
+            
+            // Fetch presigned URL from our backend
+            const response = await fetch(`${API_URL}/download-pdf?key=${encodeURIComponent(s3Key)}`);
+            if (!response.ok) throw new Error('Failed to get download link');
+            
+            const data = await response.json();
+            
+            // Trigger browser download
+            const a = document.createElement('a');
+            a.href = data.download_url;
+            a.download = s3Key;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            setTimeout(() => {
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+            }, 1000);
+        } catch (err) {
+            console.error("Download failed:", err);
+            alert("Failed to download PDF from S3.");
+            pirDownloadBtn.innerHTML = '<i class="fa-solid fa-download"></i> Download PDF';
+            pirDownloadBtn.disabled = false;
+        }
     }
 
     function closePirModal() {
@@ -66,16 +110,16 @@ document.addEventListener('DOMContentLoaded', () => {
             let response = await fetch(`${API_URL}/${incidentId}/report`);
             if (response.ok) {
                 const data = await response.json();
-                showPirContent(data.report);
+                showPirContent(data.report, data.pdf_path);
                 return;
             }
             // Not found — generate a new one
             response = await fetch(`${API_URL}/${incidentId}/report`, { method: 'POST' });
             if (!response.ok) throw new Error(`Server error: ${response.status}`);
             const data = await response.json();
-            showPirContent(data.report);
+            showPirContent(data.report, data.pdf_path);
         } catch (err) {
-            showPirContent(`Failed to generate Post-Incident Report.\n\nError: ${err.message}`);
+            showPirContent(`Failed to generate Post-Incident Report.\n\nError: ${err.message}`, null);
         }
     }
     const container = document.getElementById('incidents-container');
@@ -121,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="glass-card" style="text-align: center; color: var(--accent-red);">
                     <i class="fa-solid fa-triangle-exclamation" style="font-size: 2rem; margin-bottom: 1rem;"></i>
                     <p>Failed to connect to the Event Gateway API.</p>
-                    <p style="font-size: 0.85rem; margin-top: 0.5rem; color: var(--text-secondary);">Ensure the FastAPI server is running on port 8000.</p>
+                    <p style="font-size: 0.85rem; margin-top: 0.5rem; color: var(--text-secondary);">Ensure the FastAPI server is running on port 8082.</p>
                 </div>
             `;
             paginationControls.style.display = 'none';
@@ -261,7 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!document.getElementById('logs-view').classList.contains('active')) return;
         
         try {
-            const response = await fetch('http://127.0.0.1:8000/api/logs');
+            const response = await fetch('http://127.0.0.1:8082/api/logs');
             if (response.ok) {
                 const result = await response.json();
                 
