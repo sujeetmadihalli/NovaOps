@@ -8,6 +8,8 @@ set -e
 SERVICE_NAME="dummy-service"
 API_URL="http://localhost:8082"
 LEAK_COUNT=5
+LOCAL_FALLBACK_URL="http://localhost:8080"
+MINIKUBE_URL_TIMEOUT_SEC=10
 
 echo "=== NovaOps Incident Simulator ==="
 
@@ -19,12 +21,24 @@ if ! minikube status > /dev/null 2>&1; then
     exit 1
 fi
 
-SVC_URL=$(minikube service $SERVICE_NAME --url 2>/dev/null | head -n 1)
+SVC_URL=""
+if command -v timeout >/dev/null 2>&1; then
+    SVC_URL=$(timeout "${MINIKUBE_URL_TIMEOUT_SEC}s" minikube service "$SERVICE_NAME" --url 2>/dev/null | head -n 1 || true)
+else
+    SVC_URL=$(minikube service "$SERVICE_NAME" --url 2>/dev/null | head -n 1 || true)
+fi
 
 if [ -z "$SVC_URL" ]; then
-    echo "ERROR: Could not find $SERVICE_NAME. Is it deployed in minikube?"
-    echo "Try: kubectl apply -f dummy-service/k8s.yaml"
-    exit 1
+    echo "WARN: Could not resolve service URL via 'minikube service'."
+    echo "Trying localhost fallback: $LOCAL_FALLBACK_URL (port-forward path)..."
+    if curl -s --max-time 2 "$LOCAL_FALLBACK_URL/" > /dev/null 2>&1; then
+        SVC_URL="$LOCAL_FALLBACK_URL"
+    else
+        echo "ERROR: Could not find $SERVICE_NAME endpoint."
+        echo "Try: kubectl apply -f dummy-service/k8s.yaml"
+        echo "Or ensure port-forward is active on $LOCAL_FALLBACK_URL"
+        exit 1
+    fi
 fi
 
 echo "Found $SERVICE_NAME at: $SVC_URL"
