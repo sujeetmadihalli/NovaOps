@@ -1,93 +1,98 @@
-# NovaOps: Autonomous Production Incident Resolution Agent
+# NovaOps: Autonomous Incident Resolution Agent
 
-**NovaOps** is an autonomous, event-driven agent that transitions production incidents from "alerting" directly to "resolving." Built around the **300K context window of Amazon Nova Pro**, it ingests sprawling diagnostic data-logs, metrics, Kubernetes events, git histories, reasons about root causes using Chain-of-Thought prompting, and proposes safe, constrained remediations in seconds.
+NovaOps is an event-driven incident response system that collects runtime context (logs, metrics, Kubernetes events, commit history, runbooks), asks Amazon Nova Pro for a remediation plan, and sends that plan to humans for approval.
 
-> **Human MTTR:** ~15-20 minutes (wake up, VPN, triage across 5 dashboards)
-> **NovaOps MTTR:** ~10-15 seconds (parallel aggregation + LLM reasoning + Slack dispatch)
+## Current System Version
 
----
+- Version line: `AWS + LocalStack simulation profile`
+- Active branch: `aws-localstack-sim`
+- Last updated: `March 9, 2026`
+- Runtime mode: `FastAPI + Docker + LocalStack + Minikube + dashboard`
 
-## Key Features
+## What Is Running Today
 
-| Feature | Description |
-|---|---|
-| **ReAct Reasoning Engine** | Chain-of-Thought prompting with 3-attempt self-correction retry loop. Regex-based JSON extraction strips `<thinking>` tags for clean tool invocations. |
-| **TF-IDF Knowledge Base** | Zero-dependency runbook search. Indexes markdown runbooks and scores them against incoming alerts for contextual RAG injection. |
-| **Self-Learning Runbooks** | When a Post-Incident Report is generated, it's automatically saved as a new `.md` runbook (if no similar one exists), growing the knowledge base over time. Service-scoped deduplication ensures the same alert on different services gets separate runbooks. |
-| **Post-Incident Reports (PIR)** | One-click PIR generation via Amazon Nova. Reports are rendered as formatted HTML in the dashboard modal and exported as styled PDFs. |
-| **Ghost Mode (Human-in-the-Loop)** | The agent never executes autonomously in production. It posts its hypothesis and an "Approve" button to Slack, requiring human approval before any action. |
-| **Dead Man's Snitch** | If the agent crashes or the Nova API is unreachable, a critical Slack alert is fired immediately to page human SREs. |
-| **Live Telemetry Logs** | Dashboard tab streaming the unified `novaops.log` buffer with ANSI color-coded service prefixes. |
-| **Execution Sandbox** | Tools are strictly typed, whitelisted, and safety-capped (e.g., max 20 replicas on `scale_deployment`). |
-| **7/7 Evaluation Harness** | 7 diverse incident scenarios testing the agent's reasoning — OOM, traffic surge, deadlock, bad config, cache bloat, third-party outage, and zero-shot (no runbook). |
+- Event API: FastAPI (`api/server.py`) in Docker, exposed at `http://localhost:8082`
+- Data persistence: DynamoDB table (`IncidentHistory`) on LocalStack (`:4566`)
+- PIR PDF storage: S3 bucket (`novaops-pir-reports`) on LocalStack
+- Dashboard: static `http.server` on `http://localhost:8081`
+- Telemetry sources:
+  - CloudWatch logs (falls back to mock if access denied)
+  - Prometheus (`http://localhost:9090` via port-forward)
+  - Kubernetes events (from Minikube)
+  - GitHub commits (token-based, mock fallback)
 
----
+## Core Features
+
+- ReAct-style incident reasoning loop with JSON tool selection
+- Tool sandbox for constrained actions (`rollback_deployment`, `scale_deployment`, `restart_pods`, `noop_require_human`)
+- TF-IDF runbook retrieval (`runbooks/*.md`)
+- PIR generation with Amazon Nova + PDF export
+- Ghost mode notifications to Slack (human-in-the-loop approval)
+- Live log stream in dashboard (`/api/logs`)
 
 ## System Architecture
 
-The architecture is strictly separated into **Read (Observation)** and **Write (Execution)** boundaries for safety.
+The architecture is separated into read/observe and write/act boundaries for safety.
 
-```
-PagerDuty/OpsGenie Alert
-        │
-        ▼
-┌─────────────────────────────────────────────────┐
-│              EVENT GATEWAY (FastAPI)            │
-│              api/server.py :8000                │
-└────────────────────┬────────────────────────────┘
-                     │  Background Task
-                     ▼
-┌─────────────────────────────────────────────────┐
-│           CONTEXT AGGREGATORS (parallel)        │
-│  ┌──────────┐ ┌──────────┐ ┌────────┐ ┌───────┐ │
-│  │CloudWatch│ │Prometheus│ │  K8s   │ │GitHub │ │
-│  │  Logs    │ │ Metrics  │ │ Events │ │Commits│ │
-│  └──────────┘ └──────────┘ └────────┘ └───────┘ │
-└────────────────────┬────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────┐
-│          TF-IDF KNOWLEDGE BASE (RAG)            │
-│   runbooks/*.md → Tokenize → Score → Inject     │
-└────────────────────┬────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────┐
-│     AMAZON NOVA PRO REASONING ENGINE            │
-│  Chain-of-Thought → JSON Tool Call → Validate   │
-│  3-attempt self-correction retry loop           │
-└────────┬───────────────────────────┬────────────┘
-         │                           │
-         ▼                           ▼
-┌─────────────────┐     ┌──────────────────────┐
-│ EXECUTION       │     │  GHOST MODE          │
-│ SANDBOX         │     │  Slack Approval      │
-│ tools/          │     │  "Approve Exec Plan" │
-└─────────────────┘     └──────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────┐
-│           SELF-LEARNING LOOP                    │
-│  PIR Generated → Auto-save as .md runbook       │
-│  (if novel alert+service combo)                 │
-│  → Re-index TF-IDF corpus immediately           │
-└─────────────────────────────────────────────────┘
+```text
+                        Host (WSL / Linux)
+  +--------------------+                +------------------------+
+  | Dashboard UI       |  HTTP :8081    | Alert Source           |
+  | (python http.server)+--------------> | PagerDuty/OpsGenie    |
+  +---------+----------+                +-----------+------------+
+            |                                        |
+            | GET /api/*                             | POST /webhook/pagerduty
+            v                                        v
+  +---------------------------------------------------------------+
+  | Event Gateway API (FastAPI in Docker)                         |
+  | container :8000  -> host :8082                                |
+  | api/server.py                                                 |
+  +-------------------+--------------------------+----------------+
+                      |                          |
+                      | read/write history       | generate PIR PDF / download URL
+                      v                          v
+         +------------------------+      +------------------------+
+         | LocalStack DynamoDB    |      | LocalStack S3          |
+         | IncidentHistory table  |      | novaops-pir-reports    |
+         +------------------------+      +------------------------+
+                      ^
+                      |
+                      | background incident loop
+                      v
+  +---------------------------------------------------------------+
+  | Agent Orchestrator (ReAct)                                    |
+  | Context aggregators: CloudWatch, Prometheus(:9090), K8s, GitHub|
+  | + TF-IDF RAG (runbooks/*.md) + Nova Pro reasoning             |
+  +----------------------+-------------------------------+---------+
+                         |                               |
+                         | action proposal               | handoff
+                         v                               v
+               +---------------------+        +----------------------+
+               | Tool Sandbox        |        | Ghost Mode (Slack)   |
+               | rollback/scale/restart|      | Approve Exec Plan    |
+               +---------------------+        +----------------------+
+                         |
+                         v
+                +-------------------------------+
+                | Self-learning loop            |
+                | PIR -> runbook save -> reindex|
+                +-------------------------------+
 ```
 
----
+## Quick Start (WSL Recommended)
 
-## Quick Start
+### 1. Prerequisites
 
-### Prerequisites
+- WSL2 (Ubuntu 22.04 recommended)
+- Docker Desktop (WSL integration enabled)
+- Minikube
+- kubectl
+- Helm (for Prometheus stack if needed)
+- AWS credentials with Bedrock model access (`amazon.nova-pro-v1:0`)
 
-- **Minikube** and **kubectl** installed (for live K8s telemetry)
-- **Helm** installed (for Prometheus monitoring stack)
-- **Python 3.10+** with `venv`
-- **AWS Account** with Bedrock access to `amazon.nova-pro-v1:0`
+### 2. Configure `.env`
 
-### 1. Configure AWS Credentials
-
-Create a `.env` file in the project root:
+Create `incident-agent/.env`:
 
 ```env
 AWS_ACCESS_KEY_ID=your_access_key
@@ -96,147 +101,99 @@ AWS_DEFAULT_REGION=us-east-1
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/your/webhook/url
 ```
 
-### 2. Install Dependencies
+### 3. Start the full stack
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-### 3. Launch Everything (Single Command)
-
-Make sure Minikube is running (`minikube start`) with the dummy service and Prometheus stack deployed.
-
-```bash
+cd /mnt/d/Projects/AmazonNova/incident-agent
 chmod +x start_novaops.sh
 ./start_novaops.sh
 ```
 
-This single script:
-- Kills any orphaned processes on ports 8000, 8080, 8081, 9090
-- Starts Kubernetes port-forwards for Prometheus and the dummy service
-- Boots the FastAPI Event Gateway on port 8000
-- Boots the Dashboard UI on port 8081
-- Streams all output with color-coded prefixes to a unified terminal
+This script:
 
-| URL | Purpose |
-|---|---|
-| `http://localhost:8081` | Dashboard UI |
-| `http://localhost:8000/docs` | FastAPI Swagger Docs |
-| `http://localhost:8000/health` | Health Check |
+- validates/starts Minikube
+- starts `kubectl port-forward` for:
+  - Prometheus `9090:9090`
+  - dummy-service `8080:8080`
+- runs `docker compose up -d --build` (LocalStack + API)
+- starts dashboard on port `8081`
+- streams logs to `novaops.log`
 
-### 4. Run the Evaluation Harness
+### 4. Verify health
 
-In a **new terminal**, trigger all 7 test scenarios:
+- Dashboard: `http://localhost:8081`
+- API health: `http://localhost:8082/health`
+- API docs: `http://localhost:8082/docs`
+
+## Running Tests
 
 ```bash
-PYTHONPATH=. venv/bin/python evaluation_harness/multi_scenario_test.py
+cd /mnt/d/Projects/AmazonNova/incident-agent
+source venv/bin/activate
+python -m pytest -q
 ```
 
-Watch the Dashboard populate in real-time as the agent resolves each incident.
+## Evaluation Harness
 
-### 5. Generate Post-Incident Reports
+Run multi-scenario validation:
 
-1. Open the dashboard at `http://localhost:8081`
-2. Click **"Post-Incident Report"** on any incident card
-3. Amazon Nova generates a structured PIR displayed in a formatted modal
-4. Click **"Copy Report"** to clipboard, or find the PDF in `runbooks/pir_reports/`
+```bash
+cd /mnt/d/Projects/AmazonNova/incident-agent
+source venv/bin/activate
+PYTHONPATH=. python evaluation_harness/multi_scenario_test.py
+```
 
-### 6. View Live Telemetry Logs
+## Incident Simulation
 
-Click the **"Live Telemetry Logs"** tab in the dashboard to see the real-time NovaOps log stream with color-coded service prefixes:
-- `[Nova-Agent]` — LLM reasoning and tool decisions
-- `[Event-API]` — FastAPI server activity
-- `[K8s-Prom]` — Kubernetes port-forward status
-- `[Dashboard]` — UI server activity
+Use the all-in-one script:
 
----
+```bash
+cd /mnt/d/Projects/AmazonNova/incident-agent
+chmod +x simulate_incident.sh
+./simulate_incident.sh
+```
 
-## Evaluation Results (7/7)
+Current behavior:
 
-The agent achieves **100% accuracy** across 7 diverse incident scenarios, each requiring different reasoning:
+- tries `minikube service dummy-service --url` with timeout
+- falls back to `http://localhost:8080` if URL resolution blocks
+- triggers `/memory-leak`
+- posts alert to `POST http://localhost:8082/webhook/pagerduty`
 
-| # | Scenario | Expected Tool | Why It's Hard |
-|---|---|---|---|
-| 1 | Bad Deployment OOM | `rollback_deployment` | Recent commit exists → must rollback, not restart |
-| 2 | Traffic Surge | `scale_deployment` | High CPU, no bad commit → scaling is the answer |
-| 3 | Thread Deadlock | `restart_pods` | 0% CPU but unresponsive → scaling would just create more deadlocked pods |
-| 4 | Bad DB Config | `rollback_deployment` | CrashLoop + recent DB config change → rollback the config |
-| 5 | Organic Cache Bloat | `restart_pods` | Same OOM as #1, but NO recent commit — rollback makes no sense |
-| 6 | Third-Party API Down | `noop_require_human` | Nothing to fix internally — must hand off to humans |
-| 7 | Zero-Shot (No Runbook) | `scale_deployment` | Agent has zero instructions, must reason from pre-training alone |
+## API Endpoints (Current)
 
----
+- `GET /health`
+- `GET /api/incidents`
+- `GET /api/logs`
+- `POST /webhook/pagerduty`
+- `POST /api/incidents/{incident_id}/report`
+- `GET /api/incidents/{incident_id}/report`
+- `GET /api/download-pdf?key=<s3_object_key>`
 
 ## Project Structure
 
 ```text
 incident-agent/
-│
-├── .env                              # AWS credentials (user-created)
-├── requirements.txt                  # Python dependencies
-├── start_novaops.sh                  # Unified launch script (single command)
-├── start_demo.sh                     # Legacy K8s port-forward script
-│
-├── api/                              # FastAPI Endpoints & Webhooks
-│   ├── server.py                     # Webhook receiver, PIR endpoints, log streaming
-│   ├── slack_notifier.py             # Ghost Mode: Slack approval payloads
-│   └── history_db.py                 # SQLite incident history with PIR storage
-│
-├── agent/                            # The AI Brain
-│   ├── orchestrator.py               # ReAct loop: Observe → Reason → Act
-│   ├── nova_client.py                # AWS Bedrock client for Amazon Nova Pro
-│   ├── knowledge_base.py             # TF-IDF runbook search + self-learning auto-save
-│   ├── pir_generator.py              # Post-Incident Report generation via Nova
-│   └── pdf_generator.py              # ReportLab PDF export for PIRs
-│
-├── aggregator/                       # Context Extraction Pipeline
-│   ├── logs.py                       # AWS CloudWatch error/fatal log fetcher
-│   ├── metrics.py                    # Prometheus CPU/Memory saturation queries
-│   ├── kubernetes_state.py           # K8s pod events (OOMKill, CrashLoop)
-│   └── github_history.py             # GitHub commit history fetcher
-│
-├── tools/                            # Safe Execution Sandbox
-│   ├── k8s_actions.py                # Constrained K8s operations (rollback, scale, restart)
-│   └── registry.py                   # Maps Nova's JSON tool calls to Python functions
-│
-├── runbooks/                         # Knowledge Base (TF-IDF indexed)
-│   ├── dummy-service-oom.md          # Manual: memory leak → restart_pods
-│   ├── redis-oom-error.md            # Manual: Redis OOM → rollback_deployment
-│   ├── pir-*.md                      # Auto-generated: self-learned from resolved incidents
-│   └── pir_reports/                  # PDF exports of Post-Incident Reports
-│
-├── dashboard/                        # Glassmorphic Web Dashboard
-│   ├── index.html                    # Tabbed UI: Incidents + Live Logs + PIR Modal
-│   ├── app.js                        # Fetch, render, ANSI parsing, markdown rendering
-│   └── style.css                     # Dark-mode glass design system
-│
-├── dummy-service/                    # Intentionally Vulnerable Microservice
-│   ├── main.py                       # FastAPI app with /memory-leak endpoint
-│   ├── k8s.yaml                      # K8s Deployment (500Mi memory limit)
-│   └── Dockerfile                    # Container build
-│
-└── evaluation_harness/
-    └── multi_scenario_test.py        # 7-scenario edge case evaluation suite
+├── agent/                # Orchestrator, Nova client, PIR/RAG logic
+├── aggregator/           # Logs, metrics, k8s, github context collectors
+├── api/                  # FastAPI server, notifier, DynamoDB layer
+├── dashboard/            # Frontend UI (incidents, logs, PIR modal)
+├── dummy-service/        # Test workload to simulate failures
+├── evaluation_harness/   # Scenario-based evaluation scripts
+├── runbooks/             # Manual + auto-learned runbooks and PIR reports
+├── tools/                # Action sandbox registry + k8s actions
+├── docker-compose.yml    # LocalStack + API runtime
+├── start_novaops.sh      # Main startup script
+└── simulate_incident.sh  # End-to-end incident simulation script
 ```
 
----
+## Notes
 
-## Production AWS Architecture
-
-In a production AWS environment, the local components would be replaced with managed services:
-
-| Local Component | AWS Production Equivalent |
-|---|---|
-| SQLite (`history.db`) | **Amazon DynamoDB** |
-| TF-IDF Knowledge Base | **Amazon Bedrock Knowledge Bases + OpenSearch Serverless** |
-| Local Prometheus | **Amazon Managed Prometheus** |
-| Dashboard (static HTML) | **Amazon QuickSight** or **Managed Grafana** |
-| `novaops.log` file | **Amazon CloudWatch Logs** |
-| PIR PDF files | **Amazon S3** |
-| Slack Webhooks | **Amazon SNS → Slack/Email/PagerDuty** |
+- The system is demo-safe: remediation is proposed and notified, not automatically executed in production.
+- Several integrations intentionally degrade gracefully to mock data when external dependencies are unavailable.
 
 ---
 
-*Built with Amazon Nova Pro on AWS Bedrock*
+Built with Amazon Nova Pro on AWS Bedrock.
+
+
