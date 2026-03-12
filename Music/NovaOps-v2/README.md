@@ -182,7 +182,6 @@ tests/          37 unit tests
 python -m venv venv
 source venv/Scripts/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env
 
 # Run in fully offline mock mode (no Bedrock spend)
 NOVAOPS_USE_MOCK=1 python -m agents "P2 OOM alert on payment-service in prod"
@@ -197,15 +196,58 @@ export NOVAOPS_USE_MOCK=0
 python -m agents "P2 traffic surge on checkout-service in prod"
 ```
 
-### API server
+### API server + Dashboard (local)
 
-```bash
-uvicorn api.server:app --reload
-# POST /webhook/pagerduty           — trigger full 3-stage investigation
-# GET  /api/incidents/{id}          — fetch status + artifacts
-# POST /api/incidents/{id}/approve  — human approval → governance gate → execution
-# GET  /api/governance/{id}/decision
-# GET  /api/governance/{id}/audit
+```powershell
+cd "e:\Nova Hackathon\NOVA-GOVERNANCE-BRANCH\NovaOps\Music\NovaOps-v2"
+./venv/Scripts/Activate.ps1
+$env:PYTHONPATH = "."
+$env:NOVAOPS_USE_MOCK = "1"
+uvicorn api.server:app --reload --host 0.0.0.0 --port 8082
+```
+
+- Dashboard: `http://localhost:8082/`
+- API docs: `http://localhost:8082/docs`
+
+Run eval harness in a **second terminal** (same env vars):
+```powershell
+$env:PYTHONPATH = "."
+$env:NOVAOPS_USE_MOCK = "1"
+python evaluation_harness/multi_scenario_test.py
+```
+
+### Docker
+
+```powershell
+cd "e:\Nova Hackathon\NOVA-GOVERNANCE-BRANCH\NovaOps\Music\NovaOps-v2"
+
+# First time or after code changes:
+docker-compose up --build
+
+# Start/stop without rebuilding:
+docker-compose up
+docker-compose down
+```
+
+Dashboard and API are available at the same URLs (`http://localhost:8082/`). The compose file starts two containers: `localstack` (S3 + DynamoDB) and `novaops-api` (FastAPI + dashboard). `NOVAOPS_USE_MOCK=1` is set by default in the compose file so no Bedrock credentials are required for local testing.
+
+### Clear old incidents
+
+```powershell
+# Stop server / docker-compose down first, then:
+Remove-Item history.db -Force -ErrorAction SilentlyContinue
+Remove-Item plans -Recurse -Force -ErrorAction SilentlyContinue
+# Restart, then Ctrl+Shift+R in browser
+```
+
+### API endpoints
+
+```
+POST /webhook/pagerduty           — trigger full 3-stage investigation
+GET  /api/incidents/{id}          — fetch status + artifacts
+POST /api/incidents/{id}/approve  — human approval → governance gate → execution
+GET  /api/governance/{id}/decision
+GET  /api/governance/{id}/audit
 ```
 
 ---

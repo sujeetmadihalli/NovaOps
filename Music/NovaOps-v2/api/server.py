@@ -15,12 +15,15 @@ import os
 import json
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pathlib import Path
+import boto3
+from botocore.config import Config
 
 from agents.pir_generator import generate_pir
-from api.history_db import IncidentHistoryDB
+from api.history_db import get_incident_db
 from api.slack_notifier import SlackNotifier
 from governance.gate import GovernanceGate
 from governance.audit_log import AuditLog
@@ -51,7 +54,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-db = IncidentHistoryDB()
+db = get_incident_db()
 USE_MOCK = _env_bool("NOVAOPS_USE_MOCK", True)
 notifier = SlackNotifier(use_mock=USE_MOCK)
 k8s = KubernetesActions(use_mock=USE_MOCK)
@@ -139,6 +142,11 @@ def trigger_agent_loop(payload: AlertPayload):
         )
 
 
+@app.get("/")
+def root():
+    return RedirectResponse(url="/dashboard/")
+
+
 @app.post("/webhook/pagerduty")
 async def pagerduty_webhook(payload: AlertPayload, background_tasks: BackgroundTasks):
     logger.info(f"Webhook received: {payload.alert_name} on {payload.service_name}")
@@ -203,7 +211,7 @@ def create_pir(incident_id: str):
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
 
-    pir = generate_pir(
+    pir_text, pdf_path = generate_pir(
         incident_id=incident_id,
         domain=incident.get("domain", "unknown"),
         alert_text=incident.get("alert_name", ""),
@@ -214,8 +222,13 @@ def create_pir(incident_id: str):
         },
         service_name=incident.get("service_name", ""),
     )
-    db.save_pir(incident_id, pir)
-    return {"status": "success", "incident_id": incident_id, "report": pir}
+    db.save_pir(incident_id, pir_text)
+    return {
+        "status": "success",
+        "incident_id": incident_id,
+        "report": pir_text,
+        "pdf_path": pdf_path,
+    }
 
 
 @app.get("/api/incidents/{incident_id}/report")
@@ -254,6 +267,49 @@ def get_governance_audit(incident_id: str):
         "entry_count": len(entries),
         "entries": entries,
     }
+
+
+@app.get("/api/logs")
+def get_live_logs():
+    """Tail the unified novaops.log file for the dashboard live terminal."""
+    try:
+        log_path = os.environ.get("NOVAOPS_LOG_PATH", "novaops.log")
+        with open(log_path, "r", encoding="utf-8") as f:
+            all_lines = f.readlines()
+        noise_patterns = ["GET /api/incidents", "GET /api/logs"]
+        filtered = [l for l in all_lines if not any(p in l for p in noise_patterns)]
+        last_lines = filtered[-500:] if len(filtered) > 500 else filtered
+        return {"status": "success", "logs": last_lines}
+    except FileNotFoundError:
+        return {"status": "success", "logs": ["Waiting for novaops.log buffer to initialize..."]}
+
+
+@app.get("/api/download-pdf")
+def get_pdf_download_url(key: str):
+    """Generate a presigned S3 URL for downloading a PIR PDF (LocalStack in dev, real S3 in prod)."""
+    s3_endpoint = os.environ.get("S3_ENDPOINT", None)
+    client_kwargs = dict(region_name="us-east-1")
+    if s3_endpoint:
+        client_kwargs.update(
+            endpoint_url=s3_endpoint,
+            aws_access_key_id="test",
+            aws_secret_access_key="test",
+        )
+    s3_client = boto3.client("s3", config=Config(signature_version="s3v4"), **client_kwargs)
+    try:
+        url = s3_client.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={
+                "Bucket": "novaops-pir-reports",
+                "Key": key,
+                "ResponseContentDisposition": f'attachment; filename="{key}"',
+            },
+            ExpiresIn=3600,
+        )
+        return {"status": "success", "download_url": url}
+    except Exception as e:
+        logger.error(f"Failed to generate presigned URL: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate download link")
 
 
 @app.get("/health")

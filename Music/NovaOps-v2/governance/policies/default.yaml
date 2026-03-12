@@ -48,6 +48,14 @@ policies:
       confidence_min: 0.85
     decision: ALLOW_AUTO
 
+  - name: p2_restart_auto
+    description: "High-confidence P2 pod restarts are safe to auto-execute"
+    conditions:
+      severities: ["P2"]
+      actions: ["restart_pods"]
+      confidence_min: 0.85
+    decision: ALLOW_AUTO
+
   - name: default_require_approval
     description: "Default fallback — require human approval for anything not explicitly allowed"
     conditions: {}

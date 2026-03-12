@@ -1,0 +1,16 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+plans/
+history.db
+*.log
+evaluation/results/
+tests/
+evaluation_harness/
+dummy-service/
+.git/
+.claude/
+*.md
+*.pdf

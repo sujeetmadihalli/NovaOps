@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+  localstack:
+    container_name: localstack
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"          # LocalStack Gateway
+    environment:
+      - SERVICES=s3,dynamodb # Use LocalStack for both S3 and DynamoDB!
+      - DEBUG=1
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    volumes:
+      - ./init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh
+      - localstack-data:/var/lib/localstack
+    networks:
+      - novaops_net
+
+  novaops-api:
+    container_name: novaops-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8000"          # Expose API on host port 8082
+    env_file:
+      - .env                   # Real AWS creds for Bedrock LLM
+    environment:
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_EC2_METADATA_DISABLED=true
+      - DYNAMODB_ENDPOINT=http://localstack:4566
+      - S3_ENDPOINT=http://localstack:4566
+      - NOVAOPS_LOG_PATH=/app/novaops.log
+      - NOVAOPS_USE_MOCK=1
+    volumes:
+      - ./runbooks:/app/runbooks        # Mount runbooks for TF-IDF indexing
+      - ./novaops.log:/app/novaops.log  # Shared log file for dashboard
+    command: sh -c "touch /app/novaops.log && uvicorn api.server:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      - localstack
+    networks:
+      - novaops_net
+
+volumes:
+  localstack-data:
+  dynamodb-data:
+
+networks:
+  novaops_net:
+    driver: bridge

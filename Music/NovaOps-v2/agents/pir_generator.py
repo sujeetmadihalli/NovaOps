@@ -4,9 +4,10 @@ import logging
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from agents.knowledge_base import KnowledgeBaseRAG
+from agents.pdf_generator import PIRPDFGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +15,12 @@ PLANS_DIR = Path(__file__).parent.parent / "plans"
 
 
 def generate_pir(incident_id: str, domain: str, alert_text: str,
-                 analysis: str, action: Dict[str, Any] | str, service_name: str = "unknown") -> str:
-    """Generate a PIR from investigation results. Returns PIR markdown."""
+                 analysis: str, action: Dict[str, Any] | str, service_name: str = "unknown") -> Tuple[str, str | None]:
+    """Generate a PIR from investigation results.
+
+    Returns:
+        (pir_text, pdf_path) tuple. pdf_path is None if PDF generation fails.
+    """
 
     kb = KnowledgeBaseRAG()
     runbook = kb.search_relevant_runbook(f"{alert_text} {domain}")
@@ -75,12 +80,22 @@ parallel data collection and cross-correlation of evidence.
 
     # Save PIR to investigation directory
     inv_dir = PLANS_DIR / incident_id
+    pdf_path = None
     if inv_dir.exists():
         (inv_dir / "pir.md").write_text(pir, encoding="utf-8")
+
+        # Generate PDF from PIR
+        try:
+            pdf_gen = PIRPDFGenerator(output_dir=str(inv_dir))
+            pdf_path = pdf_gen.generate(incident_id, pir)
+            logger.info(f"PDF generated for incident {incident_id}: {pdf_path}")
+        except Exception as e:
+            logger.warning(f"Failed to generate PDF for incident {incident_id}: {e}. Returning text only.")
+            pdf_path = None
 
     # Self-learning: save as runbook if novel
     if not kb.has_similar_runbook(alert_text, service_name):
         kb.save_as_runbook(alert_text, service_name, pir)
         logger.info(f"Self-learned: PIR saved as new runbook")
 
-    return pir
+    return (pir, pdf_path)

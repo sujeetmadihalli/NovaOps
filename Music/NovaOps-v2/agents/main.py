@@ -19,6 +19,7 @@ from agents.artifacts import (
     save_validation_summary,
 )
 from agents.schemas import parse_remediation, WarRoomResult
+from api.history_db import get_incident_db
 from governance.gate import GovernanceGate, persist_fallback_governance
 from governance.audit_log import AuditLog
 from governance.report import generate_governance_report
@@ -191,6 +192,34 @@ def run(alert_text: str, executor: RemediationExecutor | None = None) -> dict:
     print(
         f"[*] Governance: decision={gov_result.decision} "
         f"risk={gov_result.risk_score}/100 policy={gov_result.policy_name}"
+    )
+
+    # Log incident to database for dashboard
+    db = get_incident_db()
+    # Build human-readable analysis for dashboard display
+    analysis_parts = []
+    if war_room.root_cause and war_room.root_cause.top_hypothesis:
+        h = war_room.root_cause.top_hypothesis
+        analysis_parts.append(h.description)
+        if h.recommended_action:
+            analysis_parts.append(f"Recommended action: {h.recommended_action}")
+        analysis_parts.append(f"Confidence: {h.confidence:.0%}")
+    if war_room.root_cause and war_room.root_cause.reasoning_chain:
+        analysis_parts.append(f"Reasoning: {war_room.root_cause.reasoning_chain}")
+    if war_room.critic and war_room.critic.feedback:
+        analysis_parts.append(f"Critic: {war_room.critic.feedback}")
+    analysis_display = "\n".join(analysis_parts) or result_text[:500]
+
+    db.log_incident(
+        incident_id=incident_id,
+        service_name=jury_service,
+        alert_name=alert_text,
+        domain=domain,
+        severity=gov_result.severity if gov_result else "P3",
+        analysis=analysis_display,
+        proposed_action=proposed_action,
+        status=gov_result.decision if gov_result else "UNKNOWN",
+        report_path=str(report_path) if report_path else "",
     )
 
     return {

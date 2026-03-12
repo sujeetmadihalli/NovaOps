@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NovaOps | Incident Intelligence Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background-grid"></div>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    <div class="app-container">
+        <header class="navbar">
+            <div class="logo">
+                <i class="fa-solid fa-satellite-dish"></i>
+                <h1>NovaOps <span>Agent</span></h1>
+            </div>
+            <div class="nav-metrics">
+                <span class="pulse-indicator"></span>
+                <span>Live Telemetry Connected</span>
+            </div>
+        </header>
+
+        <main class="dashboard-grid">
+            <!-- Left Column: Stats & Meta -->
+            <section class="meta-panel">
+                <div class="glass-card stat-card">
+                    <div class="stat-header">
+                        <h3>Model Engine</h3>
+                        <i class="fa-brands fa-aws"></i>
+                    </div>
+                    <div class="stat-value">Amazon Nova Pro</div>
+                    <div class="stat-subtitle">300K Context Window</div>
+                </div>
+
+                <div class="glass-card stat-card">
+                    <div class="stat-header">
+                        <h3>Agent Win Rate</h3>
+                        <i class="fa-solid fa-chart-line"></i>
+                    </div>
+                    <div class="stat-value" id="win-rate">—</div>
+                    <div class="stat-subtitle">Successful Remediation Plans</div>
+                </div>
+
+                <div class="glass-card info-card">
+                    <h3>Enterprise Architecture</h3>
+                    <p>In a production AWS environment, this telemetry feed is natively ingested by <strong>Amazon DynamoDB</strong> and visualized via <strong>Amazon QuickSight</strong> or <strong>Managed Grafana</strong> without requiring custom frontend infrastructure.</p>
+                </div>
+            </section>
+
+            <!-- Right Column: Feed & Logs -->
+            <section class="incident-feed">
+                <div class="feed-header">
+                    <div class="feed-tabs">
+                        <h2 class="tab-btn active" data-target="feed-view">Incident Resolutions</h2>
+                        <h2 class="tab-btn" data-target="logs-view">Live Telemetry Logs <span class="live-dot"></span></h2>
+                    </div>
+                    <div class="feed-actions">
+                        <select id="sort-select" class="glass-select">
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                        </select>
+                        <button id="refresh-btn" class="icon-btn"><i class="fa-solid fa-rotate-right"></i></button>
+                    </div>
+                </div>
+                
+                <!-- View 1: Incidents Feed -->
+                <div id="feed-view" class="view-section active">
+                    <div class="feed-filters" id="filter-container">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="restart_pods">Restarts</button>
+                        <button class="filter-btn" data-filter="scale_deployment">Scaling</button>
+                        <button class="filter-btn" data-filter="rollback_deployment">Rollbacks</button>
+                        <button class="filter-btn" data-filter="noop_require_human">Manual</button>
+                    </div>
+                    <div id="incidents-container" class="incidents-list">
+                        <!-- Incidents will be injected here by JS -->
+                        <div class="loading-state">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i>
+                            <p>Polling Event Gateway...</p>
+                        </div>
+                    </div>
+
+                    <div class="pagination-controls" id="pagination-controls" style="display: none;">
+                        <button id="prev-page" class="ghost-btn" disabled><i class="fa-solid fa-chevron-left"></i> Prev</button>
+                        <div class="page-info">Page <span id="current-page">1</span> of <span id="total-pages">1</span></div>
+                        <button id="next-page" class="ghost-btn" disabled>Next <i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                </div>
+
+                <!-- View 2: Live Logs Terminal -->
+                <div id="logs-view" class="view-section">
+                    <div class="log-filters" id="log-filter-container">
+                        <button class="filter-btn active" data-log-filter="all">All</button>
+                        <button class="filter-btn" data-log-filter="Nova-Agent"><i class="fa-solid fa-brain"></i> Nova-Agent</button>
+                        <button class="filter-btn" data-log-filter="Event-API"><i class="fa-solid fa-bolt"></i> Event-API</button>
+                        <button class="filter-btn" data-log-filter="K8s-Prom"><i class="fa-solid fa-dharmachakra"></i> K8s-Prom</button>
+                        <button class="filter-btn" data-log-filter="Dashboard"><i class="fa-solid fa-chart-line"></i> Dashboard</button>
+                    </div>
+                    <div class="terminal-container">
+                        <div class="terminal-header">
+                            <div class="terminal-dots">
+                                <span></span><span></span><span></span>
+                            </div>
+                            <div class="terminal-title">bash - start_novaops.sh</div>
+                        </div>
+                        <div class="terminal-body" id="terminal-output">
+                            <div class="loading-state">
+                                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                                <p>Tailing novaops.log buffer...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+            </section>
+        </main>
+    </div>
+
+    <!-- Incident Template for easy cloning -->
+    <template id="incident-template">
+        <div class="glass-card incident-card">
+            <div class="incident-header">
+                <div class="incident-title">
+                    <span class="severity-badge">CRITICAL</span>
+                    <h3 class="alert-name">Alert Name</h3>
+                </div>
+                <div class="incident-meta">
+                    <span class="service-tag"><i class="fa-solid fa-server"></i> <span class="service-name">service</span></span>
+                    <span class="timestamp"><i class="fa-regular fa-clock"></i> <span class="time-str">Just now</span></span>
+                </div>
+            </div>
+            
+            <div class="incident-body">
+                <div class="rca-section">
+                    <h4><i class="fa-solid fa-brain"></i> Agent Root Cause Analysis</h4>
+                    <p class="analysis-text">Loading deductive reasoning...</p>
+                </div>
+                
+                <div class="action-section">
+                    <h4><i class="fa-solid fa-terminal"></i> Proposed Mitigation</h4>
+                    <div class="code-block">
+                        <span class="tool-name">tool_name</span>
+                        <pre class="parameters">{}</pre>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="incident-footer">
+                <div class="status-indicator">
+                    <i class="fa-solid fa-circle-check"></i> <span class="status-text">Plan Generated</span>
+                </div>
+                <div class="footer-actions">
+                    <button class="ghost-btn pir-btn" title="Generate Post-Incident Report">
+                        <i class="fa-solid fa-file-lines"></i> Post-Incident Report
+                    </button>
+                    <button class="ghost-btn" title="View Full Trace"><i class="fa-solid fa-code-fork"></i> ReAct Trace</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- PIR Modal -->
+    <div id="pir-modal" class="pir-modal-overlay" style="display: none;">
+        <div class="pir-modal">
+            <div class="pir-modal-header">
+                <div class="pir-modal-title">
+                    <i class="fa-solid fa-file-lines"></i>
+                    <h2>Post-Incident Report</h2>
+                    <span class="pir-badge">Nova Generated</span>
+                </div>
+                <button id="pir-close-btn" class="icon-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="pir-modal-body">
+                <div id="pir-loading" class="pir-loading">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    <p>Amazon Nova is generating your Post-Incident Report...</p>
+                </div>
+                <div id="pir-content" class="pir-content" style="display: none;"></div>
+            </div>
+            <div class="pir-modal-footer">
+                <button id="pir-download-btn" class="ghost-btn" style="display: none;">
+                    <i class="fa-solid fa-download"></i> Download PDF
+                </button>
+                <button id="pir-copy-btn" class="ghost-btn" style="display: none;">
+                    <i class="fa-solid fa-copy"></i> Copy Report
+                </button>
+                <button id="pir-close-footer-btn" class="ghost-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=2"></script>
+</body>
+</html>

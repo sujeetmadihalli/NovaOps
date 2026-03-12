@@ -5,10 +5,15 @@ alert_keywords:
   oom:
     - OutOfMemoryError
     - OOMKilling
+    - OOM
+    - oom
     - "memory cgroup"
     - "heap space"
     - "memory limit"
     - "memory spike"
+    - "cache bloat"
+    - "cache"
+    - "memory leak"
   traffic_surge:
     - "CPU exhaustion"
     - "ThreadPoolExecutor exhausted"
@@ -22,12 +27,19 @@ alert_keywords:
     - "slow responses"
     - "throughput spike"
     - "request timeout"
+    - "CPU spike"
+    - "saturated"
+    - "workers"
+    - "indexing"
   deadlock:
     - "Deadlock detected"
     - "Thread waiting"
     - "lock held by"
     - "Readiness probe failed"
     - "0% CPU"
+    - "deadlock"
+    - "thread"
+    - "lock contention"
   config_drift:
     - "CrashLoopBackOff"
     - "ConnectionRefused"
@@ -35,6 +47,10 @@ alert_keywords:
     - "configuration"
     - "environment variable"
     - "feature flag"
+    - "credential"
+    - "authentication"
+    - "password"
+    - "secret"
   dependency_failure:
     - "UnknownHostException"
     - "DNS resolution"

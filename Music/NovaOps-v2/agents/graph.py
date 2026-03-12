@@ -331,8 +331,13 @@ def _build_mock_node_texts(alert_text: str, domain: str) -> dict[str, str]:
             "github_analyst": {"recent_deployment": False},
         }
     elif domain == "oom":
-        action = "restart_pods"
-        confidence = 0.83
+        alert_lower = alert_text.lower()
+        if any(kw in alert_lower for kw in ("deploy", "bump", "bad", "config", "change")):
+            action = "rollback_deployment"
+            confidence = 0.80
+        else:
+            action = "restart_pods"
+            confidence = 0.83
         critic_verdict = "PASS"
         critic_feedback = "OOM evidence is clear and restarting pods is a safe first action."
         summary = "Memory pressure indicates unstable workers that should be recycled."
@@ -340,6 +345,54 @@ def _build_mock_node_texts(alert_text: str, domain: str) -> dict[str, str]:
             "log_analyst": {"oom_kill": True, "memory_errors": True},
             "metrics_analyst": {"memory": "critical", "cpu": "normal"},
             "k8s_inspector": {"restarts": "increasing", "termination_reason": "OOMKilled"},
+            "github_analyst": {"recent_deployment": True},
+        }
+    elif domain == "deadlock":
+        action = "restart_pods"
+        confidence = 0.82
+        critic_verdict = "PASS"
+        critic_feedback = "Deadlock detected; restarting pods will clear the deadlock state."
+        summary = "Thread deadlock requires pod restart to recover execution flow."
+        findings = {
+            "log_analyst": {"deadlock": True, "thread_state": "blocked"},
+            "metrics_analyst": {"cpu": "zero", "latency": "infinite"},
+            "k8s_inspector": {"pods_ready": False, "liveness_probe": "failed"},
+            "github_analyst": {"recent_deployment": False},
+        }
+    elif domain == "config_drift":
+        action = "rollback_deployment"
+        confidence = 0.85
+        critic_verdict = "PASS"
+        critic_feedback = "Configuration drift is best resolved by rolling back to last known-good version."
+        summary = "Configuration error requires deployment rollback to restore service stability."
+        findings = {
+            "log_analyst": {"config_error": True, "error_type": "InvalidConfiguration"},
+            "metrics_analyst": {"throughput": "zero", "errors": "elevated"},
+            "k8s_inspector": {"crash_loop_back_off": True, "pod_status": "CrashLoopBackOff"},
+            "github_analyst": {"recent_deployment": True},
+        }
+    elif domain == "dependency_failure":
+        action = "noop_require_human"
+        confidence = 0.70
+        critic_verdict = "PASS"
+        critic_feedback = "Dependency failure requires investigation into external service status."
+        summary = "External dependency unavailable; human investigation required to restore connection."
+        findings = {
+            "log_analyst": {"upstream_error": True, "error_type": "UnknownHostException"},
+            "metrics_analyst": {"error_rate": "elevated", "timeout_rate": "high"},
+            "k8s_inspector": {"pods_ready": True, "connection_errors": "detected"},
+            "github_analyst": {"recent_deployment": False},
+        }
+    elif domain == "cascading_failure":
+        action = "noop_require_human"
+        confidence = 0.50
+        critic_verdict = "FAIL"
+        critic_feedback = "Cascading failure across multiple services requires careful human coordination."
+        summary = "Multiple services affected; escalate to human operator for coordinated recovery."
+        findings = {
+            "log_analyst": {"multiple_services": True, "cascade_detected": True},
+            "metrics_analyst": {"all_metrics": "degraded"},
+            "k8s_inspector": {"cluster_health": "degraded"},
             "github_analyst": {"recent_deployment": True},
         }
 

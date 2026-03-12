@@ -124,6 +124,8 @@ If nothing in your domain is present, clearly state that with low confidence.
 """
 
     def deliberate(self, incident_context: Dict[str, Any]) -> Dict[str, Any]:
+        if self.llm.use_mock:
+            return self._mock_deliberate()
         pattern_hits = self._pattern_scan(incident_context)
         verdict = super().deliberate(incident_context)
 

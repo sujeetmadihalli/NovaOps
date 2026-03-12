@@ -82,10 +82,37 @@ class KnowledgeBaseRAG:
         return best_rb["content"]
 
     def has_similar_runbook(self, alert_name: str, service_name: str) -> bool:
+        """Check if a runbook exists for this alert+service.
+
+        Layer 1: Exact filename match (pir-{service}-{alert}.md)
+        Layer 2: Keyword overlap (3+ keywords match between alert+service and runbook filename)
+        """
         target = self._make_filename(alert_name, service_name)
+
+        # Layer 1: Exact filename match
         for rb in self._runbooks:
             if rb["filename"] == target:
+                logger.info(f"Found exact runbook match: {rb['filename']}")
                 return True
+
+        # Layer 2: Keyword overlap fallback
+        # Extract keywords from alert+service (normalize hyphens to spaces)
+        combined = (alert_name + " " + service_name).lower().replace("-", " ")
+        alert_keywords = set(combined.split())
+
+        for rb in self._runbooks:
+            # Extract keywords from runbook filename (remove .md and pir- prefix, replace - with space)
+            fname = rb["filename"].replace(".md", "").replace("pir-", "").replace("-", " ").lower()
+            fname_keywords = set(fname.split())
+            overlap = alert_keywords & fname_keywords
+            if len(overlap) >= 3:
+                logger.info(
+                    f"Found runbook via keyword overlap: {rb['filename']} "
+                    f"(keywords: {overlap})"
+                )
+                return True
+
+        logger.info(f"No existing runbook found for '{alert_name}' on '{service_name}'")
         return False
 
     def save_as_runbook(self, alert_name: str, service_name: str, content: str) -> str:

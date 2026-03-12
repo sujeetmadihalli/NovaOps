@@ -34,10 +34,10 @@ class BaseJuror:
     def _mock_deliberate(self) -> Dict[str, Any]:
         return {
             "juror": self.name,
-            "verdict": f"{self.name} mock verdict: inconclusive.",
-            "confidence": 0.5,
+            "verdict": f"{self.name} defers to War Room in mock mode.",
+            "confidence": 0.7,
             "recommended_action": "noop_require_human",
-            "reasoning": "Mock mode — no real LLM call made."
+            "reasoning": "Mock mode — neutral verdict to avoid artificial disagreement."
         }
 
     def deliberate(self, incident_context: Dict[str, Any]) -> Dict[str, Any]:
