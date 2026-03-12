@@ -164,7 +164,7 @@ Agent_Jury/     Jury pipeline — 4 specialist jurors + Judge + Escalation Gate
 agent/          nova_client.py — Bedrock client used by Jury jurors
 pipeline/       convergence.py — War Room vs Jury agreement check
 aggregator/     Log, metric, Kubernetes, and GitHub data fetchers (live + mock)
-api/            FastAPI server, SQLite history DB, Slack notifier, PagerDuty webhook
+api/            FastAPI server, dual-backend history DB (SQLite local / DynamoDB Docker), Slack notifier, PagerDuty webhook
 governance/     GovernanceGate, PolicyEngine, AuditLog, report generator
 tools/          Tool wrappers, RemediationExecutor, knowledge retrieval
 evaluation/     15 scenario harness covering 6 failure domains
@@ -203,8 +203,10 @@ cd "e:\Nova Hackathon\NOVA-GOVERNANCE-BRANCH\NovaOps\Music\NovaOps-v2"
 ./venv/Scripts/Activate.ps1
 $env:PYTHONPATH = "."
 $env:NOVAOPS_USE_MOCK = "1"
-uvicorn api.server:app --reload --host 0.0.0.0 --port 8082
+uvicorn api.server:app --host 0.0.0.0 --port 8082
 ```
+
+> Do **not** use `--reload` on Windows — it spawns a subprocess under the system Python which may not have write access to the working drive.
 
 - Dashboard: `http://localhost:8082/`
 - API docs: `http://localhost:8082/docs`
@@ -218,8 +220,19 @@ python evaluation_harness/multi_scenario_test.py
 
 ### Docker
 
+The Docker stack uses two containers:
+
+| Container | Purpose |
+|---|---|
+| `localstack` | LocalStack emulating AWS S3 (PIR PDFs) + DynamoDB (incident history) |
+| `novaops-api` | FastAPI app + static dashboard |
+
 ```powershell
 cd "e:\Nova Hackathon\NOVA-GOVERNANCE-BRANCH\NovaOps\Music\NovaOps-v2"
+
+# One-time: create the log file on the host before first run
+# (if it doesn't exist, Docker bind-mount creates it as a directory)
+New-Item -ItemType File -Name "novaops.log" -Force
 
 # First time or after code changes:
 docker-compose up --build
@@ -227,17 +240,34 @@ docker-compose up --build
 # Start/stop without rebuilding:
 docker-compose up
 docker-compose down
+
+# Check container logs:
+docker-compose logs -f
 ```
 
-Dashboard and API are available at the same URLs (`http://localhost:8082/`). The compose file starts two containers: `localstack` (S3 + DynamoDB) and `novaops-api` (FastAPI + dashboard). `NOVAOPS_USE_MOCK=1` is set by default in the compose file so no Bedrock credentials are required for local testing.
+Dashboard and API: `http://localhost:8082/`. `NOVAOPS_USE_MOCK=1` is set in the compose file — no Bedrock credentials needed for local testing.
+
+**Populate incidents in Docker** — in a separate terminal while containers are running:
+```powershell
+python trigger_test_incidents.py
+```
+
+This POSTs three test alerts to the webhook. After ~15 seconds the incidents appear in the dashboard.
 
 ### Clear old incidents
 
+**Local (SQLite):**
 ```powershell
-# Stop server / docker-compose down first, then:
+# Stop server first, then:
 Remove-Item history.db -Force -ErrorAction SilentlyContinue
 Remove-Item plans -Recurse -Force -ErrorAction SilentlyContinue
-# Restart, then Ctrl+Shift+R in browser
+# Restart server, then Ctrl+Shift+R in browser
+```
+
+**Docker (DynamoDB):**
+```powershell
+docker-compose down -v   # -v removes the localstack-data named volume, wiping DynamoDB
+docker-compose up --build
 ```
 
 ### API endpoints
@@ -252,17 +282,36 @@ GET  /api/governance/{id}/audit
 
 ---
 
+## Storage Backends
+
+NovaOps v2 uses a dual-backend design for incident history:
+
+| Environment | Backend | How selected |
+|---|---|---|
+| Local uvicorn | SQLite (`history.db`) | `DYNAMODB_ENDPOINT` not set |
+| Docker / LocalStack | DynamoDB via LocalStack | `DYNAMODB_ENDPOINT=http://localstack:4566` |
+
+The factory function `get_incident_db()` in `api/history_db.py` automatically selects the correct backend based on the `DYNAMODB_ENDPOINT` environment variable. Both backends expose an identical interface (`log_incident`, `get_incident`, `update_status`, `save_pir`, `get_recent_incidents`).
+
+In Docker, LocalStack initialises the DynamoDB table on first use (lazy init — no startup blocking). The S3 bucket `novaops-pir-reports` is created by `init-aws.sh` which LocalStack runs automatically when ready.
+
+---
+
 ## Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
 | `NOVAOPS_USE_MOCK` | `true` | Offline mode — no Bedrock calls, controls War Room and Jury |
 | `NOVA_MODEL_ID` | `us.amazon.nova-2-lite-v1:0` | Bedrock inference profile |
-| `AWS_DEFAULT_REGION` | `us-east-1` | Bedrock region |
+| `AWS_DEFAULT_REGION` | `us-east-1` | Bedrock / LocalStack region |
 | `AWS_BEARER_TOKEN_BEDROCK` | — | Bearer token for Bedrock access |
 | `HACKATHON_MODE` | `false` | Alias for mock mode |
 | `SLACK_WEBHOOK_URL` | — | Ghost Mode approval notifications |
 | `USE_BEDROCK_KB` | `false` | Use managed Bedrock Knowledge Bases for RAG |
+| `DYNAMODB_ENDPOINT` | — | Set to LocalStack URL in Docker; selects DynamoDB backend |
+| `S3_ENDPOINT` | — | Set to LocalStack URL in Docker; used for PIR PDF presigned URLs |
+| `NOVAOPS_LOG_PATH` | `novaops.log` | Path to the unified log file read by the dashboard live terminal |
+| `HISTORY_DB_PATH` | `history.db` | Override SQLite file path (local only) |
 
 ---
 
