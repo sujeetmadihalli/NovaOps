@@ -17,7 +17,7 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pathlib import Path
 import boto3
 from botocore.config import Config
@@ -31,10 +31,43 @@ from governance.report import generate_governance_report
 from tools.executor import RemediationExecutor
 from tools.k8s_actions import KubernetesActions
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-)
+LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
+
+
+def _configure_logging() -> None:
+    """Ensure logs go to stdout and optionally to NOVAOPS_LOG_PATH."""
+    formatter = logging.Formatter(LOG_FORMAT)
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    if not root.handlers:
+        stream = logging.StreamHandler()
+        stream.setFormatter(formatter)
+        root.addHandler(stream)
+    else:
+        for handler in root.handlers:
+            if handler.formatter is None:
+                handler.setFormatter(formatter)
+
+    log_path = os.environ.get("NOVAOPS_LOG_PATH", "").strip()
+    if not log_path:
+        return
+
+    try:
+        path = Path(log_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        resolved = str(path.resolve())
+        for handler in root.handlers:
+            if isinstance(handler, logging.FileHandler) and getattr(handler, "baseFilename", "") == resolved:
+                return
+        file_handler = logging.FileHandler(path, encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        root.addHandler(file_handler)
+    except Exception as exc:
+        logging.getLogger("novaops.api").warning(f"Failed to attach file logger: {exc}")
+
+
+_configure_logging()
 logger = logging.getLogger("novaops.api")
 
 
@@ -73,6 +106,7 @@ class AlertPayload(BaseModel):
     namespace: str = "default"
     incident_id: str = ""
     description: str = ""
+    metadata: dict = Field(default_factory=dict)
 
 
 def _load_validation_summary(report_path: str) -> dict:
@@ -98,7 +132,7 @@ def trigger_agent_loop(payload: AlertPayload):
     logger.info(f"Starting investigation: {alert_text}")
 
     try:
-        result = run(alert_text, executor=executor)
+        result = run(alert_text, executor=executor, metadata=payload.metadata)
 
         proposed_action = result.get("proposed_action", {})
         # Map governance_status to a meaningful DB status

@@ -40,7 +40,11 @@ def _extract_action_from_text(text: str) -> dict:
     return plan.to_action_dict()
 
 
-def run(alert_text: str, executor: RemediationExecutor | None = None) -> dict:
+def run(
+    alert_text: str,
+    executor: RemediationExecutor | None = None,
+    metadata: dict | None = None,
+) -> dict:
     """Run the full war room investigation pipeline.
 
     executor — optional RemediationExecutor; if None a mock instance is created.
@@ -160,7 +164,12 @@ def run(alert_text: str, executor: RemediationExecutor | None = None) -> dict:
 
     print("[*] Convening jury for independent blind validation...")
     jury = JuryOrchestrator(mock_sensors=use_mock_env, mock_llm=use_mock_env)
-    jury_result = jury.run(alert_name=alert_text, service_name=jury_service, namespace=jury_namespace)
+    jury_result = jury.run(
+        alert_name=alert_text,
+        service_name=jury_service,
+        namespace=jury_namespace,
+        metadata=metadata or {},
+    )
     jury_action = (jury_result.get("proposed_action") or {}).get("tool", "noop_require_human")
     jury_conf = jury_result.get("confidence", 0.0)
     print(f"[*] Jury: action={jury_action} conf={jury_conf:.2f} escalate={jury_result.get('should_escalate')}")

@@ -1,8 +1,24 @@
 # NovaOps v2 — Implementation Plan
 
-**Status:** ✅ DEPLOYMENT READY (Updated: March 11, 2026 - Post-Merge + Dashboard & Docker)
+**Status:** ✅ DEPLOYMENT READY (Updated: March 13, 2026 - Jury Concurrency + Convergence Guard)
 **Branch:** nova-agent-3 (selective merge from main complete)
 **Sanity Test:** All tests PASSED (10 verification categories, 16 routes, 7 policies, zero breaking changes)
+
+---
+
+## March 13, 2026 Delta (Codex implementation)
+
+Completed changes:
+1. Jury deliberation now runs in parallel with timeout isolation using `ThreadPoolExecutor` in `Agent_Jury/jury_orchestrator.py`.
+2. Jury GitHub repo context is now configurable:
+   - `SERVICE_REPO_MAP` environment variable supports service-to-repo mapping.
+   - webhook `metadata.github.owner/repo` overrides mapped defaults per incident.
+3. Governance now hard-gates convergence disagreement/escalation in `governance/gate.py`:
+   - if `convergence.agree == false` OR jury escalation reasons exist, decision is forced to `REQUIRE_APPROVAL`.
+
+Verification completed:
+1. Targeted tests: `tests.test_jury_orchestrator_logic`, `tests.test_governance_gate_logic` passed.
+2. Full suite sanity: `python -m unittest discover -s tests -v` passed (`48 tests`, `OK`).
 
 ---
 

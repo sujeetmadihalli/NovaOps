@@ -112,6 +112,35 @@ class GovernanceGateLogicTests(unittest.TestCase):
         self.assertEqual(result.status, "execution_failed")
         self.assertFalse(result.auto_executed)
 
+    def test_evaluate_forces_approval_when_convergence_disagrees(self):
+        incident_id = "inc-conv-disagree"
+        self._incident_dir(incident_id)
+        incident = {
+            "proposed_action": {
+                "tool": "scale_deployment",
+                "parameters": {
+                    "service_name": "checkout",
+                    "namespace": "prod",
+                    "target_replicas": 4,
+                },
+            },
+            "domain": "traffic_surge",
+            "convergence": {
+                "agree": False,
+                "jury_escalation_reasons": ["jurors disagree"],
+                "adjusted_confidence": 0.95,
+                "confidence_source": "convergence_disagreement",
+            },
+        }
+
+        with patch.object(gate, "PLANS_DIR", self.plans_dir), patch.object(audit_log, "PLANS_DIR", self.plans_dir):
+            result = GovernanceGate(self.executor).evaluate(incident_id, incident, _war_room())
+
+        self.assertEqual(result.decision, "REQUIRE_APPROVAL")
+        self.assertEqual(result.status, "pending_approval")
+        self.assertEqual(result.policy_name, "convergence_guard_require_approval")
+        self.executor.execute.assert_not_called()
+
     def test_evaluate_keeps_noop_human_gated(self):
         incident_id = "inc-noop"
         self._incident_dir(incident_id)

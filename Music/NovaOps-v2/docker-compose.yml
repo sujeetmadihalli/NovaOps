@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   localstack:
     container_name: localstack
@@ -15,6 +13,11 @@ services:
     volumes:
       - ./init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh
       - localstack-data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "awslocal", "s3", "ls"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     networks:
       - novaops_net
 
@@ -29,23 +32,26 @@ services:
       - .env                   # Real AWS creds for Bedrock LLM
     environment:
       - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
       - AWS_EC2_METADATA_DISABLED=true
       - DYNAMODB_ENDPOINT=http://localstack:4566
       - S3_ENDPOINT=http://localstack:4566
-      - NOVAOPS_LOG_PATH=/app/novaops.log
+      - NOVAOPS_LOG_PATH=/var/log/novaops/novaops.log
       - NOVAOPS_USE_MOCK=1
     volumes:
-      - ./runbooks:/app/runbooks        # Mount runbooks for TF-IDF indexing
-      - ./novaops.log:/app/novaops.log  # Shared log file for dashboard
-    command: sh -c "touch /app/novaops.log && uvicorn api.server:app --host 0.0.0.0 --port 8000"
+      - ./runbooks:/app/runbooks:ro     # Mount runbooks for TF-IDF indexing
+      - novaops-logs:/var/log/novaops   # Persist logs without host file pre-creation
+    command: sh -c "mkdir -p /var/log/novaops && touch /var/log/novaops/novaops.log && uvicorn api.server:app --host 0.0.0.0 --port 8000"
     depends_on:
-      - localstack
+      localstack:
+        condition: service_healthy
     networks:
       - novaops_net
 
 volumes:
   localstack-data:
-  dynamodb-data:
+  novaops-logs:
 
 networks:
   novaops_net:

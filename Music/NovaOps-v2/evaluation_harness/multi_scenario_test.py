@@ -33,8 +33,10 @@ class TeeLogger:
         self.terminal.flush()
         self.log_file.flush()
 
-sys.stdout = TeeLogger(sys.stdout, "novaops.log", prefix="\033[0;32m[Nova-Agent]\033[0m ")
-sys.stderr = TeeLogger(sys.stderr, "novaops.log", prefix="\033[0;31m[Agent-Log]\033[0m ")
+LOG_PATH = os.environ.get("NOVAOPS_LOG_PATH", "novaops.log")
+os.makedirs(os.path.dirname(LOG_PATH) or ".", exist_ok=True)
+sys.stdout = TeeLogger(sys.stdout, LOG_PATH, prefix="\033[0;32m[Nova-Agent]\033[0m ")
+sys.stderr = TeeLogger(sys.stderr, LOG_PATH, prefix="\033[0;31m[Agent-Log]\033[0m ")
 
 
 def run_test_scenario(harness: V2EvaluationHarness, scenario_name: str, service_name: str, mock_data: dict, expected_tool: str) -> dict:

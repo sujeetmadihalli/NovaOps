@@ -84,6 +84,20 @@ class GovernanceGate:
                 reason="noop_require_human must remain human-gated.",
                 risk_score=decision_obj.risk_score,
             )
+        convergence = incident.get("convergence") or {}
+        if convergence and (
+            not bool(convergence.get("agree", True))
+            or bool(convergence.get("jury_escalation_reasons"))
+        ):
+            decision_obj = PolicyDecision(
+                decision="REQUIRE_APPROVAL",
+                policy_name="convergence_guard_require_approval",
+                reason=(
+                    "Convergence guard: disagreement between War Room and Jury "
+                    "or Jury escalation requires human approval."
+                ),
+                risk_score=decision_obj.risk_score,
+            )
 
         audit.log("GOVERNANCE_DECISION", actor="SYSTEM", data={
             "decision": decision_obj.decision,

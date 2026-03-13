@@ -8,6 +8,14 @@ Built for the Amazon Nova AI Hackathon 2026.
 
 ---
 
+## March 13, 2026 Updates
+
+- Jury deliberation now executes concurrently via `ThreadPoolExecutor` with per-juror timeout isolation.
+- Jury GitHub context is now configurable by service using `SERVICE_REPO_MAP` and can be overridden per alert using webhook `metadata.github`.
+- Governance now hard-gates convergence disagreements and jury escalations to `REQUIRE_APPROVAL` regardless of policy auto-allow.
+
+---
+
 ## How It Works
 
 The pipeline has three stages. The War Room and the Jury run independently — the Jury never sees the War Room's reasoning. Their conclusions are compared in the Convergence Check before the Governance Gate makes the final call.
@@ -113,7 +121,7 @@ Every proposed remediation passes through a policy engine before execution.
 - Severity weight: P1=30, P2=20, P3=10, P4=5
 - Confidence penalty: `max(0, (0.75 - confidence) * 40)` for low-confidence decisions
 
-When the Convergence Check runs, the adjusted confidence replaces the raw war room confidence in the risk calculation — meaning disagreement between pipelines raises the risk score and pushes toward `REQUIRE_APPROVAL`.
+When the Convergence Check runs, the adjusted confidence replaces the raw war room confidence in the risk calculation. In addition, `GovernanceGate` applies a hard guard: disagreement or jury escalation always resolves to `REQUIRE_APPROVAL`.
 
 **Policy decisions (first match wins):**
 
@@ -187,6 +195,29 @@ pip install -r requirements.txt
 NOVAOPS_USE_MOCK=1 python -m agents "P2 OOM alert on payment-service in prod"
 ```
 
+### Run Modes (Docker vs Web)
+
+Use these exact commands depending on where you want execution.
+
+**Docker**
+```powershell
+cd G:\NovaOps\Music\NovaOps-v2
+docker compose up
+
+# Test/evaluation harness inside container
+docker compose exec -e PYTHONPATH=. -e NOVAOPS_USE_MOCK=1 novaops-api python evaluation_harness/multi_scenario_test.py
+```
+
+**Web / Local Python**
+```powershell
+cd G:\NovaOps\Music\NovaOps-v2
+$env:PYTHONPATH = "."
+$env:NOVAOPS_USE_MOCK = "1"
+python evaluation_harness/multi_scenario_test.py
+```
+
+For Docker-specific troubleshooting and full fix history, see `docker_fixes.md`.
+
 ### Live mode (Amazon Nova 2 Lite on Bedrock)
 
 ```bash
@@ -230,10 +261,6 @@ The Docker stack uses two containers:
 ```powershell
 cd "e:\Nova Hackathon\NOVA-GOVERNANCE-BRANCH\NovaOps\Music\NovaOps-v2"
 
-# One-time: create the log file on the host before first run
-# (if it doesn't exist, Docker bind-mount creates it as a directory)
-New-Item -ItemType File -Name "novaops.log" -Force
-
 # First time or after code changes:
 docker-compose up --build
 
@@ -246,6 +273,12 @@ docker-compose logs -f
 ```
 
 Dashboard and API: `http://localhost:8082/`. `NOVAOPS_USE_MOCK=1` is set in the compose file — no Bedrock credentials needed for local testing.
+For a fresh machine, ensure `.env` exists (copy from your template or use the provided one in this repo) before running Compose.
+
+Run the evaluation harness in Docker (recommended for dashboard telemetry):
+```powershell
+docker compose exec -e PYTHONPATH=. -e NOVAOPS_USE_MOCK=1 novaops-api python evaluation_harness/multi_scenario_test.py
+```
 
 **Populate incidents in Docker** — in a separate terminal while containers are running:
 ```powershell
@@ -280,6 +313,23 @@ GET  /api/governance/{id}/decision
 GET  /api/governance/{id}/audit
 ```
 
+`POST /webhook/pagerduty` supports optional metadata for jury repo context:
+
+```json
+{
+  "alert_name": "P2 latency alert",
+  "service_name": "checkout-service",
+  "namespace": "prod",
+  "description": "traffic surge in checkout",
+  "metadata": {
+    "github": {
+      "owner": "acme-inc",
+      "repo": "checkout-api"
+    }
+  }
+}
+```
+
 ---
 
 ## Storage Backends
@@ -312,6 +362,7 @@ In Docker, LocalStack initialises the DynamoDB table on first use (lazy init —
 | `S3_ENDPOINT` | — | Set to LocalStack URL in Docker; used for PIR PDF presigned URLs |
 | `NOVAOPS_LOG_PATH` | `novaops.log` | Path to the unified log file read by the dashboard live terminal |
 | `HISTORY_DB_PATH` | `history.db` | Override SQLite file path (local only) |
+| `SERVICE_REPO_MAP` | — | JSON map for jury GitHub context. Example: `{"checkout-service":{"owner":"acme-inc","repo":"checkout-api"}}` |
 
 ---
 
@@ -332,7 +383,7 @@ Scenarios cover: `oom`, `traffic_surge`, `deadlock`, `config_drift`, `dependency
 
 ```bash
 python -m unittest discover -s tests -v
-# 37 tests, < 1s
+# 48 tests
 ```
 
 ---
