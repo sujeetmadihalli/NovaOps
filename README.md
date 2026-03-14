@@ -188,31 +188,41 @@ tests/          37 unit tests
 
 ```bash
 python -m venv venv
-source venv/Scripts/activate        # Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
 
 # Run in fully offline mock mode (no Bedrock spend)
 NOVAOPS_USE_MOCK=1 python -m agents "P2 OOM alert on payment-service in prod"
 ```
 
-### Run Modes (Docker vs Web)
+### Run Modes (Global System Scripts vs Web)
 
 Use these exact commands depending on where you want execution.
 
-**Docker**
-```powershell
-cd G:\NovaOps\Music\NovaOps-v2
-docker compose up
+**Global System Orchestration (Recommended)**
+We provide a unified start script that transparently boots `docker compose` (backend API + LocalStack) and `minikube` (Kubernetes cluster) in the background while feeding all logs to one file.
+```bash
+cd incident-agent
+./start_system.sh
 
-# Test/evaluation harness inside container
+# To view live backend & K8s boot logs:
+tail -f novaops_system.log
+
+# To gracefully destroy Minikube and Docker containers:
+./stop_system.sh
+```
+
+**Test / Evaluation Harness**
+To trigger an evaluation incident after the system is online:
+```bash
 docker compose exec -e PYTHONPATH=. -e NOVAOPS_USE_MOCK=1 novaops-api python evaluation_harness/multi_scenario_test.py
 ```
 
 **Web / Local Python**
-```powershell
-cd G:\NovaOps\Music\NovaOps-v2
-$env:PYTHONPATH = "."
-$env:NOVAOPS_USE_MOCK = "1"
+```bash
+cd incident-agent
+export PYTHONPATH="."
+export NOVAOPS_USE_MOCK="1"
 python evaluation_harness/multi_scenario_test.py
 ```
 
@@ -229,23 +239,23 @@ python -m agents "P2 traffic surge on checkout-service in prod"
 
 ### API server + Dashboard (local)
 
-```powershell
-cd "e:\Nova Hackathon\NOVA-GOVERNANCE-BRANCH\NovaOps\Music\NovaOps-v2"
-./venv/Scripts/Activate.ps1
-$env:PYTHONPATH = "."
-$env:NOVAOPS_USE_MOCK = "1"
+```bash
+cd incident-agent
+source venv/bin/activate
+export PYTHONPATH="."
+export NOVAOPS_USE_MOCK="1"
 uvicorn api.server:app --host 0.0.0.0 --port 8082
 ```
 
 > Do **not** use `--reload` on Windows — it spawns a subprocess under the system Python which may not have write access to the working drive.
 
 - Dashboard: `http://localhost:8082/`
-- API docs: `http://localhost:8082/docs`
+- API docs (Swagger): `http://localhost:8082/docs` (served via `/novaops.json`)
 
 Run eval harness in a **second terminal** (same env vars):
-```powershell
-$env:PYTHONPATH = "."
-$env:NOVAOPS_USE_MOCK = "1"
+```bash
+export PYTHONPATH="."
+export NOVAOPS_USE_MOCK="1"
 python evaluation_harness/multi_scenario_test.py
 ```
 
@@ -258,30 +268,26 @@ The Docker stack uses two containers:
 | `localstack` | LocalStack emulating AWS S3 (PIR PDFs) + DynamoDB (incident history) |
 | `novaops-api` | FastAPI app + static dashboard |
 
-```powershell
-cd "e:\Nova Hackathon\NOVA-GOVERNANCE-BRANCH\NovaOps\Music\NovaOps-v2"
+```bash
+cd incident-agent
 
-# First time or after code changes:
-docker-compose up --build
+# Start all resources simultaneously (Docker + Minikube + tail logs)
+./start_system.sh
 
-# Start/stop without rebuilding:
-docker-compose up
-docker-compose down
-
-# Check container logs:
-docker-compose logs -f
+# Destroy all resources and clean out databases
+./stop_system.sh
 ```
 
-Dashboard and API: `http://localhost:8082/`. `NOVAOPS_USE_MOCK=1` is set in the compose file — no Bedrock credentials needed for local testing.
-For a fresh machine, ensure `.env` exists (copy from your template or use the provided one in this repo) before running Compose.
+Dashboard and API: `http://localhost:8082/`. `NOVAOPS_USE_MOCK=1` is physically set in the compute runtime — no Bedrock credentials needed for local testing.
+For a fresh machine, ensure `.env` exists (copy from your template or use the provided one in this repo) before running the startup sequence.
 
 Run the evaluation harness in Docker (recommended for dashboard telemetry):
-```powershell
+```bash
 docker compose exec -e PYTHONPATH=. -e NOVAOPS_USE_MOCK=1 novaops-api python evaluation_harness/multi_scenario_test.py
 ```
 
 **Populate incidents in Docker** — in a separate terminal while containers are running:
-```powershell
+```bash
 python trigger_test_incidents.py
 ```
 
@@ -290,17 +296,17 @@ This POSTs three test alerts to the webhook. After ~15 seconds the incidents app
 ### Clear old incidents
 
 **Local (SQLite):**
-```powershell
+```bash
 # Stop server first, then:
-Remove-Item history.db -Force -ErrorAction SilentlyContinue
-Remove-Item plans -Recurse -Force -ErrorAction SilentlyContinue
+rm -f history.db
+rm -rf plans
 # Restart server, then Ctrl+Shift+R in browser
 ```
 
 **Docker (DynamoDB):**
-```powershell
-docker-compose down -v   # -v removes the localstack-data named volume, wiping DynamoDB
-docker-compose up --build
+```bash
+docker compose down -v   # -v removes the localstack-data named volume, wiping DynamoDB
+docker compose up -d --build
 ```
 
 ### API endpoints

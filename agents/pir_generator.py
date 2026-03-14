@@ -80,18 +80,19 @@ parallel data collection and cross-correlation of evidence.
 
     # Save PIR to investigation directory
     inv_dir = PLANS_DIR / incident_id
+    inv_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = None
-    if inv_dir.exists():
-        (inv_dir / "pir.md").write_text(pir, encoding="utf-8")
+    
+    (inv_dir / "pir.md").write_text(pir, encoding="utf-8")
 
-        # Generate PDF from PIR
-        try:
-            pdf_gen = PIRPDFGenerator(output_dir=str(inv_dir))
-            pdf_path = pdf_gen.generate(incident_id, pir)
-            logger.info(f"PDF generated for incident {incident_id}: {pdf_path}")
-        except Exception as e:
-            logger.warning(f"Failed to generate PDF for incident {incident_id}: {e}. Returning text only.")
-            pdf_path = None
+    # Generate PDF from PIR
+    try:
+        pdf_gen = PIRPDFGenerator(output_dir=str(inv_dir))
+        pdf_path = pdf_gen.generate(incident_id, pir)
+        logger.info(f"PDF generated for incident {incident_id}: {pdf_path}")
+    except Exception as e:
+        logger.warning(f"Failed to generate PDF for incident {incident_id}: {e}. Returning text only.")
+        pdf_path = None
 
     # Self-learning: save as runbook if novel
     if not kb.has_similar_runbook(alert_text, service_name):

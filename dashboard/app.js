@@ -288,8 +288,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Detect which service a log line came from
     function getLogSource(line) {
-        if (line.includes('[Nova-Agent]') || line.includes('Nova-Agent') || line.includes('[Nova]')) return 'Nova-Agent';
-        if (line.includes('[Event-API]') || line.includes('Event-API') || line.includes('uvicorn')) return 'Event-API';
+        if (!line) return 'other';
+        const lower = line.toLowerCase();
+        if (lower.includes('jury') || lower.includes('governance') || lower.includes('convergence')) return 'Jury-Gov';
+        if (line.includes('[Nova-Agent]') || line.includes('Nova-Agent') || line.includes('[Nova]') || line.includes('[*]') || line.includes('NovaOps v2')) return 'Nova-Agent';
+        if (line.includes('[Event-API]') || line.includes('Event-API') || line.includes('uvicorn') || line.includes('[API-stdout]') || line.includes('[API-stderr]')) return 'Event-API';
         if (line.includes('[K8s-Prom]') || line.includes('K8s-Prom') || line.includes('kubectl')) return 'K8s-Prom';
         if (line.includes('[Dashboard]') || line.includes('Dashboard') || line.includes('http.server')) return 'Dashboard';
         return 'other';
@@ -330,7 +333,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 result.logs.forEach(line => {
                     const source = getLogSource(line);
                     const hidden = (currentLogFilter !== 'all' && source !== currentLogFilter) ? ' style="display:none"' : '';
-                    htmlOutput += `<p data-source="${source}"${hidden}>${formatAnsiLog(line)}</p>`;
+                    
+                    let displayLine = line;
+                    if (source === 'Jury-Gov') {
+                        // Replaces the generic prefixes with [Jury & Gov] for clarity
+                        displayLine = displayLine.replace(/\[API-stdout\]|\[API-stderr\]|\[Nova-Agent\]/g, '[Jury & Gov]');
+                    }
+                    
+                    htmlOutput += `<p data-source="${source}"${hidden}>${formatAnsiLog(displayLine)}</p>`;
                 });
                 
                 // Only update DOM if the log lines actually changed (ignore filter state)

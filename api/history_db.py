@@ -103,10 +103,10 @@ class IncidentHistoryDB:
         )
         self._conn.commit()
 
-    def save_pir(self, incident_id: str, report: str):
+    def save_pir(self, incident_id: str, report: str, pdf_path: str = None):
         self._conn.execute(
-            "UPDATE incidents SET pir_report = ? WHERE incident_id = ?",
-            (report, incident_id)
+            "UPDATE incidents SET pir_report = ?, report_path = ? WHERE incident_id = ?",
+            (report, pdf_path or "", incident_id)
         )
         self._conn.commit()
 
@@ -239,13 +239,13 @@ class DynamoDBIncidentDB:
         except Exception as e:
             logger.error(f"Failed to update status in DynamoDB: {e}")
 
-    def save_pir(self, incident_id: str, report: str):
+    def save_pir(self, incident_id: str, report: str, pdf_path: str = None):
         try:
             table = self._get_table()
             table.update_item(
                 Key={"incident_id": str(incident_id)},
-                UpdateExpression="SET pir_report = :r",
-                ExpressionAttributeValues={":r": str(report)},
+                UpdateExpression="SET pir_report = :r, report_path = :p",
+                ExpressionAttributeValues={":r": str(report), ":p": str(pdf_path or "")},
             )
         except Exception as e:
             logger.error(f"Failed to save PIR to DynamoDB: {e}")

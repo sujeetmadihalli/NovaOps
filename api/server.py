@@ -13,6 +13,7 @@ Endpoints:
 import logging
 import os
 import json
+import sys
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -34,6 +35,32 @@ from tools.k8s_actions import KubernetesActions
 LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
 
 
+class TeeLogger:
+    """Mirrors stdout/stderr to the novaops.log buffer with color tags for the Dashboard."""
+    def __init__(self, stream, filename, prefix=""):
+        self.terminal = stream
+        self.log_file = open(filename, "a", encoding="utf-8")
+        self.prefix = prefix
+        self.is_new_line = True
+
+    def write(self, message):
+        self.terminal.write(message)
+        formatted = ""
+        for char in message:
+            if self.is_new_line and char != '\n':
+                formatted += self.prefix
+                self.is_new_line = False
+            formatted += char
+            if char == '\n':
+                self.is_new_line = True
+        self.log_file.write(formatted)
+        self.log_file.flush()
+
+    def flush(self):
+        self.terminal.flush()
+        self.log_file.flush()
+
+
 def _configure_logging() -> None:
     """Ensure logs go to stdout and optionally to NOVAOPS_LOG_PATH."""
     formatter = logging.Formatter(LOG_FORMAT)
@@ -41,7 +68,7 @@ def _configure_logging() -> None:
     root.setLevel(logging.INFO)
 
     if not root.handlers:
-        stream = logging.StreamHandler()
+        stream = logging.StreamHandler(sys.stdout)
         stream.setFormatter(formatter)
         root.addHandler(stream)
     else:
@@ -57,12 +84,9 @@ def _configure_logging() -> None:
         path = Path(log_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         resolved = str(path.resolve())
-        for handler in root.handlers:
-            if isinstance(handler, logging.FileHandler) and getattr(handler, "baseFilename", "") == resolved:
-                return
-        file_handler = logging.FileHandler(path, encoding="utf-8")
-        file_handler.setFormatter(formatter)
-        root.addHandler(file_handler)
+        # Replace stdout and stderr with TeeLogger
+        sys.stdout = TeeLogger(sys.stdout, resolved, prefix="\033[0;34m[API-stdout]\033[0m ")
+        sys.stderr = TeeLogger(sys.stderr, resolved, prefix="\033[0;31m[API-stderr]\033[0m ")
     except Exception as exc:
         logging.getLogger("novaops.api").warning(f"Failed to attach file logger: {exc}")
 
@@ -77,7 +101,7 @@ def _env_bool(name: str, default: bool = True) -> bool:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
-app = FastAPI(title="NovaOps v2 — Autonomous SRE War Room")
+app = FastAPI(title="NovaOps v2 — Autonomous SRE War Room", openapi_url="/novaops.json")
 
 app.add_middleware(
     CORSMiddleware,
@@ -256,12 +280,31 @@ def create_pir(incident_id: str):
         },
         service_name=incident.get("service_name", ""),
     )
-    db.save_pir(incident_id, pir_text)
+    s3_key = None
+    print(f"DEBUG create_pir received pdf_path from generate_pir: {pdf_path}")
+    if pdf_path:
+        s3_key = os.path.basename(pdf_path)
+        s3_endpoint = os.environ.get("S3_ENDPOINT", None)
+        client_kwargs = dict(region_name="us-east-1")
+        if s3_endpoint:
+            client_kwargs.update(endpoint_url=s3_endpoint, aws_access_key_id="test", aws_secret_access_key="test")
+        s3_client = boto3.client("s3", **client_kwargs)
+        try:
+            print(f"DEBUG uploading to S3 with path {pdf_path}")
+            s3_client.upload_file(pdf_path, "novaops-pir-reports", s3_key)
+            print(f"DEBUG success upload to S3 with key {s3_key}")
+            logger.info(f"Uploaded {s3_key} to S3 novaops-pir-reports bucket.")
+        except Exception as e:
+            print(f"DEBUG Failed to upload to S3: {e}")
+            logger.error(f"Failed to upload {s3_key} to S3: {e}")
+            s3_key = None
+
+    db.save_pir(incident_id, pir_text, s3_key)
     return {
         "status": "success",
         "incident_id": incident_id,
         "report": pir_text,
-        "pdf_path": pdf_path,
+        "pdf_path": s3_key,
     }
 
 
@@ -272,7 +315,16 @@ def get_pir(incident_id: str):
         raise HTTPException(status_code=404, detail="Incident not found")
     if not incident.get("pir_report"):
         raise HTTPException(status_code=404, detail="No PIR generated yet")
-    return {"status": "success", "report": incident["pir_report"]}
+    
+    pdf_path = incident.get("report_path")
+    if pdf_path == "":
+        pdf_path = None
+        
+    return {
+        "status": "success", 
+        "report": incident["pir_report"],
+        "pdf_path": pdf_path
+    }
 
 
 @app.get("/api/governance/{incident_id}/decision")
