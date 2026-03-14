@@ -42,7 +42,7 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 
 def _use_mock_models() -> bool:
-    return _env_bool("NOVAOPS_USE_MOCK", True) or _env_bool("HACKATHON_MODE", False)
+    return _env_bool("NOVAOPS_USE_MOCK", True) or _env_bool("LOCAL_EVAL_MODE", False)
 
 
 @dataclass

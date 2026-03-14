@@ -249,21 +249,21 @@ def main():
     parser.add_argument("--region", default=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
     parser.add_argument("--bucket", default="novaops-sre-kb-corpus")
     parser.add_argument(
-        "--allow-managed-kb",
+        "--confirm-managed-kb",
         action="store_true",
-        help="Explicit opt-in for managed Knowledge Base resources that can consume hackathon credits.",
+        help="Explicit opt-in for managed Knowledge Base resources that can consume cloud credits.",
     )
     args = parser.parse_args()
 
     region = args.region
     bucket_name = args.bucket
 
-    if not args.allow_managed_kb:
-        logger.error(
-            "Refusing to create managed Bedrock Knowledge Base resources without --allow-managed-kb. "
-            "For hackathon use, prefer local retrieval in tools/retrieve_knowledge.py."
+    if not args.confirm_managed_kb:
+        print("Safety Abort: --confirm-managed-kb flag missing.")
+        print(
+            "For local evaluation use, prefer local retrieval in tools/retrieve_knowledge.py."
         )
-        sys.exit(2)
+        sys.exit(0)
 
     logger.info(f"Setting up Bedrock Knowledge Base in {region}")
     logger.info(f"S3 bucket: {bucket_name}")

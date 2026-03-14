@@ -33,7 +33,7 @@ def read_root():
 def trigger_leak():
     """
     Intentionally consumes ~50MB of RAM every time it is called.
-    We will use this to trigger the Prometheus OOM alert during the live Hackathon demo.
+    We will use this to trigger the Prometheus OOM alert during the live evaluation.
     """
     REQUEST_COUNT.labels(endpoint='/memory-leak').inc()
     

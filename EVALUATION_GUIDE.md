@@ -1,6 +1,6 @@
-# NovaOps v2 — Hackathon Demo Script
+# NovaOps v2 — Evaluation Guide
 
-This guide provides a step-by-step narrative to demonstrate the full power, complexity, and unique architectural design of NovaOps v2 to the Amazon Hackathon judges.
+This guide provides a step-by-step narrative to demonstrate the full power, complexity, and unique architectural design of NovaOps v2 to stakeholders and technical teams.
 
 ---
 

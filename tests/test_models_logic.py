@@ -13,7 +13,7 @@ class ModelsLogicTests(unittest.TestCase):
         self.assertEqual(model.thinking_tier, "LOW")
 
     def test_get_model_uses_bedrock_model_outside_mock_mode(self):
-        with patch.dict("os.environ", {"NOVAOPS_USE_MOCK": "0", "HACKATHON_MODE": "0"}, clear=False):
+        with patch.dict("os.environ", {"NOVAOPS_USE_MOCK": "0", "LOCAL_EVAL_MODE": "0"}, clear=False):
             with patch.object(models, "BedrockModel", autospec=True) as bedrock_model:
                 sentinel = object()
                 bedrock_model.return_value = sentinel

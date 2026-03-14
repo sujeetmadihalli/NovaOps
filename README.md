@@ -8,7 +8,7 @@ Built for Enterprise scale incident management using Amazon Nova foundational mo
 
 ---
 
-## March 13, 2026 Updates
+## Latest Release Features
 
 - Jury deliberation now executes concurrently via `ThreadPoolExecutor` with per-juror timeout isolation.
 - Jury GitHub context is now configurable by service using `SERVICE_REPO_MAP` and can be overridden per alert using webhook `metadata.github`.
@@ -290,7 +290,7 @@ In Docker, LocalStack initialises the DynamoDB table on first use (lazy init —
 | `NOVA_MODEL_ID` | `us.amazon.nova-2-lite-v1:0` | Bedrock inference profile |
 | `AWS_DEFAULT_REGION` | `us-east-1` | Bedrock / LocalStack region |
 | `AWS_BEARER_TOKEN_BEDROCK` | — | Bearer token for Bedrock access |
-| `HACKATHON_MODE` | `false` | Alias for mock mode |
+| `LOCAL_EVAL_MODE` | `false` | Alias for mock mode |
 | `SLACK_WEBHOOK_URL` | — | Ghost Mode approval notifications |
 | `USE_BEDROCK_KB` | `false` | Use managed Bedrock Knowledge Bases for RAG |
 | `DYNAMODB_ENDPOINT` | — | Set to LocalStack URL in Docker; selects DynamoDB backend |

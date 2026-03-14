@@ -31,7 +31,7 @@ def _env_bool(name: str, default: bool = True) -> bool:
 
 
 USE_MOCK = _env_bool("NOVAOPS_USE_MOCK", True)
-HACKATHON_MODE = _env_bool("HACKATHON_MODE", True)
+LOCAL_EVAL_MODE = _env_bool("LOCAL_EVAL_MODE", True)
 
 # Enhanced TF-IDF KB that also indexes skills markdown (not just runbooks)
 _kb: KnowledgeBaseRAG | None = None
@@ -144,7 +144,7 @@ def _retrieve_tfidf(query: str, num_results: int = 3) -> str:
 
 def _use_local_retrieval() -> bool:
     """Return True when local retrieval should be preferred over managed KB."""
-    if HACKATHON_MODE:
+    if LOCAL_EVAL_MODE:
         return True
     if USE_MOCK:
         return True

@@ -76,7 +76,7 @@ Each investigation writes into `plans/{incident_id}/`:
 | `AWS_SECRET_ACCESS_KEY` | For live AWS calls | AWS credentials |
 | `NOVA_MODEL_ID` | No | Bedrock model ID override |
 | `NOVAOPS_USE_MOCK` | No | Use mock aggregators and mock execution |
-| `HACKATHON_MODE` | No | Force low-cost local retrieval path |
+| `LOCAL_EVAL_MODE` | No | Force low-cost local retrieval path |
 | `SLACK_WEBHOOK_URL` | No | Slack incoming webhook |
 | `KNOWLEDGE_BASE_ID` | No | Managed Bedrock KB identifier |
 | `LOG_LEVEL` | No | Logging verbosity |
@@ -84,6 +84,6 @@ Each investigation writes into `plans/{incident_id}/`:
 ## Working Rules
 
 - Keep the Ghost Mode approval boundary intact.
-- Prefer local retrieval and low-cost paths for hackathon use.
+- Prefer local retrieval and low-cost paths for evaluation use.
 - Treat schema validation as a first-class part of the pipeline.
 - Keep `claude code/STATUS.md`, `PLAN.md`, and `SESSION.md` aligned with reality.
