@@ -10,6 +10,9 @@ Built for Enterprise scale incident management using Amazon Nova foundational mo
 
 ## Latest Release Features
 
+- **Amazon Nova Sonic Integration**: Live, real-time simulated voice calls via AWS Bedrock for human-in-the-loop action approval.
+- **Unified Telemetry Dashboard**: Complete, colorized logging of all War Room, Jury, and API operations piped directly into a single `novaops_system.log` stream.
+- **Streamlined Evaluation Engine**: A refined 4-script demonstration framework executing automated system orchestration, mock scenario injection, and live failure testing.
 - Jury deliberation now executes concurrently via `ThreadPoolExecutor` with per-juror timeout isolation.
 - Jury GitHub context is now configurable by service using `SERVICE_REPO_MAP` and can be overridden per alert using webhook `metadata.github`.
 - Governance now hard-gates convergence disagreements and jury escalations to `REQUIRE_APPROVAL` regardless of policy auto-allow.
