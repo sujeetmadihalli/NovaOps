@@ -90,7 +90,13 @@ Alert (POST /webhook/pagerduty)
 └──────────────────────────────────────────────────────────┘
                              │
                              ▼
-                       Executor / Human Approval
+┌──────────────────────────────────────────────────────────┐
+│  EXECUTION & APPROVAL                                    │
+│                                                          │
+│  ALLOW_AUTO ───────► Auto-Remediate (K8s API)            │
+│  REQUIRE_APPROVAL ─► Amazon Nova Sonic Phone Call        │
+│                      (Real-time Voice/Text Fallback)     │
+└──────────────────────────────────────────────────────────┘
 ```
 
 All agent outputs are validated against typed schemas and written to `plans/{incident_id}/` as inspectable JSON artifacts.
