@@ -201,7 +201,7 @@ pip install -r requirements.txt
 NOVAOPS_USE_MOCK=1 python -m agents "P2 OOM alert on payment-service in prod"
 ```
 
-## 🚀 Evaluation & Demonstration
+## Evaluation & Demonstration
 
 To seamlessly evaluate the entire Amazon Nova Auto-SRE ecosystem from start to finish, you only need to execute four simple scripts in order:
 
@@ -234,7 +234,7 @@ Cleanly destroys the Docker network, shuts off Minikube, kills background logger
 - Dashboard: `http://localhost:8082/`
 - API docs (Swagger): `http://localhost:8082/docs` (served via `/novaops.json`)
 
-### ⚠️ AWS & System Permissions
+### AWS & System Permissions
 
 If you are setting this project up on a new machine or AWS account for evaluation, please refer to the [AWS Permissions Guide](AWS_PERMISSIONS_GUIDE.md) before executing the scripts. **Amazon Bedrock Foundation Model Access must be explicitly granted in the AWS console.**
 
