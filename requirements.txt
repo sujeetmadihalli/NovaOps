@@ -24,3 +24,8 @@ reportlab>=4.0.0
 
 # YAML parsing (skills index)
 pyyaml>=6.0.0
+
+# Audio features
+numpy>=2.2.0
+sounddevice>=0.4.6
+soundfile>=0.12.1
