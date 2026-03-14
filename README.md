@@ -4,7 +4,7 @@
 
 NovaOps v2 responds to production alerts end-to-end: it triages the incident, dispatches four specialist analysts in parallel, reasons over their findings, validates the reasoning path with an adversarial critic, then runs a completely independent jury validation before gating the action through a policy engine. Every decision is logged to an append-only audit trail. Human override is always available.
 
-Built for the Amazon Nova AI Hackathon 2026.
+Built for Enterprise scale incident management using Amazon Nova foundational models.
 
 ---
 
@@ -201,9 +201,9 @@ pip install -r requirements.txt
 NOVAOPS_USE_MOCK=1 python -m agents "P2 OOM alert on payment-service in prod"
 ```
 
-## 🚀 Hackathon Demo Guide (The 4 Scripts)
+## 🚀 Evaluation & Demonstration
 
-To seamlessly demonstrate the entire Amazon Nova Auto-SRE ecosystem from start to finish, you only need to run four simple scripts in order:
+To seamlessly evaluate the entire Amazon Nova Auto-SRE ecosystem from start to finish, you only need to execute four simple scripts in order:
 
 ### 1. Start the System
 Brings the entire backend API, LocalStack, and K8s Minikube online. All logs are piped into one master log file.
@@ -213,7 +213,7 @@ Brings the entire backend API, LocalStack, and K8s Minikube online. All logs are
 *Wait ~15 seconds for the Docker containers to spin up. You can view progress using `tail -f novaops_system.log`.*
 
 ### 2. Run 7 Simulated Incidents (Mocked)
-Fires 7 deterministic, test-case incidents into the AWS Bedrock pipeline. This populates your dashboard with rich War Room and Jury investigation records to show the judges.
+Fires 7 deterministic, test-case incidents into the AWS Bedrock pipeline. This populates your dashboard with rich War Room and Jury investigation records to evaluate system performance.
 ```bash
 ./run_simulated_incidents.sh
 ```
@@ -236,7 +236,7 @@ Cleanly destroys the Docker network, shuts off Minikube, kills background logger
 
 ### ⚠️ AWS & System Permissions
 
-If you are setting this project up on a new machine or AWS account for the hackathon presentation, please refer to the [AWS Permissions Guide](AWS_PERMISSIONS_GUIDE.md) before executing the scripts. **Amazon Bedrock Foundation Model Access must be explicitly granted in the AWS console.**
+If you are setting this project up on a new machine or AWS account for evaluation, please refer to the [AWS Permissions Guide](AWS_PERMISSIONS_GUIDE.md) before executing the scripts. **Amazon Bedrock Foundation Model Access must be explicitly granted in the AWS console.**
 
 ### API endpoints
 
