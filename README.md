@@ -229,7 +229,7 @@ Forces an Out-Of-Memory (OOM) leak on a live Kubernetes service. The NovaOps Age
 ```
 
 ### 4. Stop Everything
-Cleanly destroys the Docker network, shuts off Minikube, kills background loggers, and leaves your laptop tidy.
+Cleanly destroys the Docker network, shuts off Minikube, kills background loggers, and leaves your system tidy.
 ```bash
 ./stop_system.sh
 ```
