@@ -195,119 +195,42 @@ pip install -r requirements.txt
 NOVAOPS_USE_MOCK=1 python -m agents "P2 OOM alert on payment-service in prod"
 ```
 
-### Run Modes (Global System Scripts vs Web)
+## 🚀 Hackathon Demo Guide (The 4 Scripts)
 
-Use these exact commands depending on where you want execution.
+To seamlessly demonstrate the entire Amazon Nova Auto-SRE ecosystem from start to finish, you only need to run four simple scripts in order:
 
-**Global System Orchestration (Recommended)**
-We provide a unified start script that transparently boots `docker compose` (backend API + LocalStack) and `minikube` (Kubernetes cluster) in the background while feeding all logs to one file.
+### 1. Start the System
+Brings the entire backend API, LocalStack, and K8s Minikube online. All logs are piped into one master log file.
 ```bash
-cd incident-agent
 ./start_system.sh
+```
+*Wait ~15 seconds for the Docker containers to spin up. You can view progress using `tail -f novaops_system.log`.*
 
-# To view live backend & K8s boot logs:
-tail -f novaops_system.log
+### 2. Run 7 Simulated Incidents (Mocked)
+Fires 7 deterministic, test-case incidents into the AWS Bedrock pipeline. This populates your dashboard with rich War Room and Jury investigation records to show the judges.
+```bash
+./run_simulated_incidents.sh
+```
+*Open `http://localhost:8081` to view their deep analysis.*
 
-# To gracefully destroy Minikube and Docker containers:
+### 3. Run a Live System Failure (Minikube + Nova Sonic)
+Forces an Out-Of-Memory (OOM) leak on a live Kubernetes service. The NovaOps Agent will detect it, investigate it, draft a remediation, and execute a **real-time simulated phone call** to ask you for verbal approval using the Amazon Nova 2 Sonic model!
+```bash
+./run_live_k8s_test.sh
+```
+
+### 4. Stop Everything
+Cleanly destroys the Docker network, shuts off Minikube, kills background loggers, and leaves your laptop tidy.
+```bash
 ./stop_system.sh
 ```
-
-**Test / Evaluation Harness**
-To trigger an evaluation incident after the system is online:
-```bash
-docker compose exec -e PYTHONPATH=. -e NOVAOPS_USE_MOCK=1 novaops-api python evaluation_harness/multi_scenario_test.py
-```
-
-**Web / Local Python**
-```bash
-cd incident-agent
-export PYTHONPATH="."
-export NOVAOPS_USE_MOCK="1"
-python evaluation_harness/multi_scenario_test.py
-```
-
-For Docker-specific troubleshooting and full fix history, see `docker_fixes.md`.
-
-### Live mode (Amazon Nova 2 Lite on Bedrock)
-
-```bash
-export AWS_DEFAULT_REGION=us-east-2
-export AWS_BEARER_TOKEN_BEDROCK=<your-token>
-export NOVAOPS_USE_MOCK=0
-python -m agents "P2 traffic surge on checkout-service in prod"
-```
-
-### API server + Dashboard (local)
-
-```bash
-cd incident-agent
-source venv/bin/activate
-export PYTHONPATH="."
-export NOVAOPS_USE_MOCK="1"
-uvicorn api.server:app --host 0.0.0.0 --port 8082
-```
-
-> Do **not** use `--reload` on Windows — it spawns a subprocess under the system Python which may not have write access to the working drive.
 
 - Dashboard: `http://localhost:8082/`
 - API docs (Swagger): `http://localhost:8082/docs` (served via `/novaops.json`)
 
-Run eval harness in a **second terminal** (same env vars):
-```bash
-export PYTHONPATH="."
-export NOVAOPS_USE_MOCK="1"
-python evaluation_harness/multi_scenario_test.py
-```
+### ⚠️ AWS & System Permissions
 
-### Docker
-
-The Docker stack uses two containers:
-
-| Container | Purpose |
-|---|---|
-| `localstack` | LocalStack emulating AWS S3 (PIR PDFs) + DynamoDB (incident history) |
-| `novaops-api` | FastAPI app + static dashboard |
-
-```bash
-cd incident-agent
-
-# Start all resources simultaneously (Docker + Minikube + tail logs)
-./start_system.sh
-
-# Destroy all resources and clean out databases
-./stop_system.sh
-```
-
-Dashboard and API: `http://localhost:8082/`. `NOVAOPS_USE_MOCK=1` is physically set in the compute runtime — no Bedrock credentials needed for local testing.
-For a fresh machine, ensure `.env` exists (copy from your template or use the provided one in this repo) before running the startup sequence.
-
-Run the evaluation harness in Docker (recommended for dashboard telemetry):
-```bash
-docker compose exec -e PYTHONPATH=. -e NOVAOPS_USE_MOCK=1 novaops-api python evaluation_harness/multi_scenario_test.py
-```
-
-**Populate incidents in Docker** — in a separate terminal while containers are running:
-```bash
-python trigger_test_incidents.py
-```
-
-This POSTs three test alerts to the webhook. After ~15 seconds the incidents appear in the dashboard.
-
-### Clear old incidents
-
-**Local (SQLite):**
-```bash
-# Stop server first, then:
-rm -f history.db
-rm -rf plans
-# Restart server, then Ctrl+Shift+R in browser
-```
-
-**Docker (DynamoDB):**
-```bash
-docker compose down -v   # -v removes the localstack-data named volume, wiping DynamoDB
-docker compose up -d --build
-```
+If you are setting this project up on a new machine or AWS account for the hackathon presentation, please refer to the [AWS Permissions Guide](AWS_PERMISSIONS_GUIDE.md) before executing the scripts. **Amazon Bedrock Foundation Model Access must be explicitly granted in the AWS console.**
 
 ### API endpoints
 

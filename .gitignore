@@ -14,3 +14,13 @@ venv/
 .vscode/
 *.swp
 *.swo
+novaops_system.log
+dashboard.log
+novaops.log
+.system_pids
+dashboard/node_modules/
+dashboard/package-lock.json
+tests/.tmp/
+bin/
+plans/
+runbooks/
