@@ -93,7 +93,7 @@ The Lambda function needs Bedrock access (same as above) plus the ability to cal
 
 Keep these in mind if you set up the system on a new machine:
 
-1. **Docker Group**: Ensure the user running `./start_system.sh` and `minikube` is added to the `docker` user group (e.g., `sudo usermod -aG docker $USER`).
+1. **Docker Group**: Ensure the user running `./start_war_room.sh` and `minikube` is added to the `docker` user group (e.g., `sudo usermod -aG docker $USER`).
 2. **Audio Hardware Access**: Running `sonic_call.py` requires direct access to audio devices (`/dev/snd` on Linux). On WSL, passing microphone hardware can be difficult. The application falls back to a text interface if audio fails.
 3. **Port Availability**: The system uses these local TCP ports:
    - `8080`: Dummy Service

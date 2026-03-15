@@ -81,10 +81,10 @@ Domain-specific playbooks for oom, traffic_surge, deadlock, config_drift, depend
 
 ## Key Files
 
-- `start_system.sh`: Launch full stack (Docker, LocalStack, API, dashboard).
+- `start_war_room.sh`: Launch full stack (Docker, LocalStack, API, dashboard).
 - `docker-compose.yml`: Local stack definition.
-- `run_simulated_incidents.sh`: Fire 7 test incidents into the pipeline.
-- `run_live_k8s_test.sh`: Live OOM test with Minikube + voice call.
+- `run_simulations.sh`: Fire 7 test incidents into the pipeline.
+- `trigger_live_outage.sh`: Live OOM test with Minikube + voice call.
 - `sonic_call.py`: Standalone voice call CLI (local mic/speaker via Bedrock).
 - `trigger_test_incidents.py`: Incident trigger CLI tool.
 - `requirements.txt`: Python dependencies.

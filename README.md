@@ -262,27 +262,27 @@ To seamlessly evaluate the entire Amazon Nova Auto-SRE ecosystem from start to f
 ### 1. Start the System
 Brings the entire backend API, LocalStack, and K8s Minikube online. All logs are piped into one master log file.
 ```bash
-./start_system.sh
+./start_war_room.sh
 ```
 *Wait ~15 seconds for the Docker containers to spin up. You can view progress using `tail -f novaops_system.log`.*
 
 ### 2. Run 7 Simulated Incidents (Mocked)
 Fires 7 deterministic, test-case incidents into the AWS Bedrock pipeline. This populates your dashboard with rich War Room and Jury investigation records to evaluate system performance.
 ```bash
-./run_simulated_incidents.sh
+./run_simulations.sh
 ```
 *Open `http://localhost:8081` to view their deep analysis.*
 
 ### 3. Run a Live System Failure (Minikube + Nova Sonic)
 Forces an Out-Of-Memory (OOM) leak on a live Kubernetes service. The NovaOps Agent will detect it, investigate it, draft a remediation, and execute a **real-time simulated phone call** to ask you for verbal approval using the Amazon Nova 2 Sonic model!
 ```bash
-./run_live_k8s_test.sh
+./trigger_live_outage.sh
 ```
 
 ### 4. Stop Everything
 Cleanly destroys the Docker network, shuts off Minikube, kills background loggers, and leaves your system tidy.
 ```bash
-./stop_system.sh
+./stop_war_room.sh
 ```
 
 - Dashboard: `http://localhost:8082/`
