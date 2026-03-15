@@ -96,7 +96,17 @@ parallel data collection and cross-correlation of evidence.
 
     # Self-learning: save as runbook if novel
     if not kb.has_similar_runbook(alert_text, service_name):
-        kb.save_as_runbook(alert_text, service_name, pir)
+        runbook_content = f"""# Runbook: {alert_text}
+Domain: {domain}
+Service: {service_name}
+
+## Root Cause
+{analysis}
+
+## Remediation
+{action_text}
+"""
+        kb.save_as_runbook(alert_text, service_name, runbook_content)
         logger.info(f"Self-learned: PIR saved as new runbook")
 
     return (pir, pdf_path)
