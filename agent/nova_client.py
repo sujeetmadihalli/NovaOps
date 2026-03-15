@@ -13,14 +13,16 @@ class NovaClient:
     Wrapper for Amazon Bedrock to interact with Amazon Nova models.
     Used by the Jury Agent system for independent LLM deliberation.
     """
-    def __init__(self, region: str = "us-east-1", model_id: str = "amazon.nova-pro-v1:0", use_mock: bool = False):
-        self.model_id = model_id
-        self.use_mock = use_mock
-
+    def __init__(self, region: str | None = None, model_id: str | None = None, use_mock: bool = False):
         load_dotenv()
 
+        self.model_id = (model_id or os.environ.get("NOVA_MODEL_ID") or "us.amazon.nova-2-lite-v1:0").strip()
+        self.use_mock = use_mock
+
+        resolved_region = (region or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1").strip()
+
         try:
-            self.client = boto3.client('bedrock-runtime', region_name=region)
+            self.client = boto3.client('bedrock-runtime', region_name=resolved_region)
         except Exception as e:
             logger.warning(f"Could not initialize Bedrock client: {e}")
             self.use_mock = True

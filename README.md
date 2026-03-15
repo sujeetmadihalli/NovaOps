@@ -175,6 +175,7 @@ Every incident generates a complete, ordered audit trail in `plans/{incident_id}
 | `EXECUTION_STARTED` | SYSTEM/HUMAN | Tool execution begins |
 | `EXECUTION_COMPLETE` | SYSTEM/HUMAN | Tool execution result |
 | `HUMAN_OVERRIDE` | HUMAN | Manual approval via `/approve` |
+| `HUMAN_REJECTED` | HUMAN | Manual denial via `/reject` |
 
 ---
 
@@ -195,7 +196,7 @@ trigger_agent_loop() completes investigation
            → Lex bot captures engineer's speech
            → Lambda calls bedrock.converse() with Nova
            → Nova detects [ACTION_APPROVED] / [ACTION_REJECTED]
-           → Lambda POSTs to /api/incidents/{id}/approve
+           → Lambda POSTs to /api/incidents/{id}/approve or /api/incidents/{id}/reject
         4. Slack critical escalation sent (supplement or fallback)
         5. voice_escalation.json artifact saved to plans/{id}/
 ```
@@ -239,7 +240,7 @@ evaluation/     15 scenario harness covering 6 failure domains
 skills/         Domain playbooks (oom, traffic_surge, deadlock, config_drift, ...)
 runbooks/       Learned PIR content for RAG
 plans/          Generated investigation artifacts (git-ignored)
-tests/          84 unit + integration tests
+tests/          104 unit + integration tests
 ```
 
 ---
@@ -252,7 +253,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Run in fully offline mock mode (no Bedrock spend)
-NOVAOPS_USE_MOCK=1 python -m agents "P2 OOM alert on payment-service in prod"
+NOVAOPS_USE_MOCK=1 python -m agents.main "P2 OOM alert on payment-service in prod"
 ```
 
 ## Evaluation & Demonstration
@@ -262,27 +263,27 @@ To seamlessly evaluate the entire Amazon Nova Auto-SRE ecosystem from start to f
 ### 1. Start the System
 Brings the entire backend API, LocalStack, and K8s Minikube online. All logs are piped into one master log file.
 ```bash
-./start_war_room.sh
+./start_system.sh
 ```
 *Wait ~15 seconds for the Docker containers to spin up. You can view progress using `tail -f novaops_system.log`.*
 
 ### 2. Run 7 Simulated Incidents (Mocked)
 Fires 7 deterministic, test-case incidents into the AWS Bedrock pipeline. This populates your dashboard with rich War Room and Jury investigation records to evaluate system performance.
 ```bash
-./run_simulations.sh
+./run_simulated_incidents.sh
 ```
-*Open `http://localhost:8081` to view their deep analysis.*
+*Open `http://localhost:8082/dashboard/` to view their deep analysis.*
 
 ### 3. Run a Live System Failure (Minikube + Nova Sonic)
 Forces an Out-Of-Memory (OOM) leak on a live Kubernetes service. The NovaOps Agent will detect it, investigate it, draft a remediation, and execute a **real-time simulated phone call** to ask you for verbal approval using the Amazon Nova 2 Sonic model!
 ```bash
-./trigger_live_outage.sh
+./run_live_k8s_test.sh
 ```
 
 ### 4. Stop Everything
 Cleanly destroys the Docker network, shuts off Minikube, kills background loggers, and leaves your system tidy.
 ```bash
-./stop_war_room.sh
+./stop_system.sh
 ```
 
 - Dashboard: `http://localhost:8082/`
@@ -346,10 +347,13 @@ In Docker, LocalStack initialises the DynamoDB table on first use (lazy init —
 | `AWS_BEARER_TOKEN_BEDROCK` | — | Bearer token for Bedrock access |
 | `LOCAL_EVAL_MODE` | `false` | Alias for mock mode |
 | `SLACK_WEBHOOK_URL` | — | Ghost Mode approval notifications |
+| `SLACK_SIGNING_SECRET` | — | Slack signing secret for interactive approve/reject callbacks (`POST /slack/actions`) |
 | `USE_BEDROCK_KB` | `false` | Use managed Bedrock Knowledge Bases for RAG |
 | `DYNAMODB_ENDPOINT` | — | Set to LocalStack URL in Docker; selects DynamoDB backend |
 | `S3_ENDPOINT` | — | Set to LocalStack URL in Docker; used for PIR PDF presigned URLs |
 | `NOVAOPS_LOG_PATH` | `novaops.log` | Path to the unified log file read by the dashboard live terminal |
+| `NOVAOPS_APPROVAL_TOKEN` | — | If set, approvals require `X-NovaOps-Approval-Token` |
+| `NOVAOPS_CORS_ORIGINS` | `http://localhost:8082,...` | CORS allowlist (JSON array or comma-separated) |
 | `HISTORY_DB_PATH` | `history.db` | Override SQLite file path (local only) |
 | `SERVICE_REPO_MAP` | — | JSON map for jury GitHub context. Example: `{"checkout-service":{"owner":"acme-inc","repo":"checkout-api"}}` |
 | **Voice Escalation** | | |
@@ -361,7 +365,9 @@ In Docker, LocalStack initialises the DynamoDB table on first use (lazy init —
 | `CONNECT_CONTACT_FLOW_ID` | — | Contact Flow ID for voice escalation |
 | `CONNECT_SOURCE_PHONE` | — | Outbound caller ID (E.164, e.g. `+15551234567`) |
 | `ONCALL_PHONE_NUMBER` | — | On-call engineer's phone number (E.164) |
-| `NOVAOPS_API_CALLBACK_URL` | `http://localhost:8082` | URL the Lambda calls to approve incidents |
+| `NOVAOPS_API_CALLBACK_URL` | `http://localhost:8082` | URL the Lambda calls to approve/reject incidents |
+
+Slack approvals: `SLACK_WEBHOOK_URL` controls message delivery; approve/reject button clicks require Slack Interactivity with Request URL pointing to `POST /slack/actions` and `SLACK_SIGNING_SECRET` set.
 
 ---
 
@@ -382,7 +388,7 @@ Scenarios cover: `oom`, `traffic_surge`, `deadlock`, `config_drift`, `dependency
 
 ```bash
 python -m unittest discover -s tests -v
-# 123 tests (unit + integration)
+# 124 tests (unit + integration)
 ```
 
 ---

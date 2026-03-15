@@ -22,6 +22,7 @@ import json
 import logging
 import urllib.request
 import urllib.error
+import urllib.parse
 
 import boto3
 
@@ -68,7 +69,7 @@ def handler(event, context):
     # Retrieve incident context from session (set by Contact Flow on call start)
     incident_id = session_attrs.get("incident_id", "unknown")
     system_prompt = session_attrs.get("system_prompt", "")
-    callback_url = session_attrs.get("callback_url", CALLBACK_URL)
+    callback_url = _resolve_callback_url(session_attrs.get("callback_url", ""))
 
     # Rebuild conversation history from session
     messages = _load_messages(session_attrs)
@@ -102,6 +103,7 @@ def handler(event, context):
 
     if "[ACTION_REJECTED]" in reply_text:
         clean_reply = reply_text.replace("[ACTION_REJECTED]", "").strip()
+        _trigger_rejection(callback_url, incident_id)
         logger.info(f"Incident {incident_id} rejected by on-call engineer")
         farewell = clean_reply or "Understood, remediation aborted. Goodbye."
         return _build_response(session_attrs, intent_name, farewell, close=True)
@@ -143,12 +145,34 @@ def _trigger_approval(callback_url: str, incident_id: str):
     try:
         req = urllib.request.Request(url, method="POST", data=b"")
         req.add_header("Content-Type", "application/json")
+        token = os.environ.get("NOVAOPS_APPROVAL_TOKEN", "").strip()
+        if token:
+            req.add_header("X-NovaOps-Approval-Token", token)
         with urllib.request.urlopen(req, timeout=10) as resp:
             logger.info(f"Approval response: {resp.status}")
     except urllib.error.URLError as e:
         logger.error(f"Approval callback failed: {e}")
     except Exception as e:
         logger.error(f"Approval callback error: {e}")
+
+
+def _trigger_rejection(callback_url: str, incident_id: str):
+    """Call the NovaOps API to reject (deny) the incident."""
+    url = f"{callback_url}/api/incidents/{incident_id}/reject"
+    logger.info(f"Triggering rejection: POST {url}")
+
+    try:
+        req = urllib.request.Request(url, method="POST", data=b"")
+        req.add_header("Content-Type", "application/json")
+        token = os.environ.get("NOVAOPS_APPROVAL_TOKEN", "").strip()
+        if token:
+            req.add_header("X-NovaOps-Approval-Token", token)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            logger.info(f"Rejection response: {resp.status}")
+    except urllib.error.URLError as e:
+        logger.error(f"Rejection callback failed: {e}")
+    except Exception as e:
+        logger.error(f"Rejection callback error: {e}")
 
 
 def _load_messages(session_attrs: dict) -> list:
@@ -172,6 +196,23 @@ def _save_messages(session_attrs: dict, messages: list):
     # Keep last 6 message pairs (12 messages) to stay under session limit
     trimmed = messages[-12:] if len(messages) > 12 else messages
     session_attrs["conversation_history"] = json.dumps(trimmed)
+
+
+def _resolve_callback_url(session_value: str) -> str:
+    """Avoid SSRF by only allowing the session callback URL when it matches our configured base."""
+    if not session_value:
+        return CALLBACK_URL
+
+    try:
+        expected = urllib.parse.urlparse(CALLBACK_URL)
+        provided = urllib.parse.urlparse(session_value)
+        if provided.scheme in {"http", "https"} and provided.netloc == expected.netloc:
+            return session_value.rstrip("/")
+    except Exception:
+        pass
+
+    logger.warning("Ignoring unexpected callback_url from session attributes")
+    return CALLBACK_URL.rstrip("/")
 
 
 def _build_response(

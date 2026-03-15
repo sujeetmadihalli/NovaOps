@@ -137,6 +137,11 @@ def _summarise_event(etype: str, data: dict) -> str:
             f"original=`{data.get('original_decision')}` "
             f"risk={data.get('risk_score')}/100"
         )
+    if etype == "HUMAN_REJECTED":
+        return (
+            f"original=`{data.get('original_decision')}` "
+            f"risk={data.get('risk_score')}/100"
+        )
     if etype == "CRITIC_VERDICT":
         return f"verdict=`{data.get('verdict')}` confidence={data.get('confidence', 0):.0%}"
     if etype == "TRIAGE_COMPLETE":
@@ -144,6 +149,15 @@ def _summarise_event(etype: str, data: dict) -> str:
             f"domain=`{data.get('domain')}` severity=`{data.get('severity')}` "
             f"service=`{data.get('service_name', 'unknown')}`"
         )
+    if etype == "CONVERGENCE_CHECK":
+        agree = data.get("agree")
+        war_action = data.get("war_room_action")
+        jury_action = data.get("jury_action")
+        try:
+            adj = float(data.get("adjusted_confidence", 0.0))
+        except (TypeError, ValueError):
+            adj = 0.0
+        return f"agree={agree} war=`{war_action}` jury=`{jury_action}` adj_conf={adj:.2f}"
     if etype == "HYPOTHESIS_FORMED":
         desc = clip(data.get("description", ""))
         return f"confidence={data.get('confidence', 0):.0%} - {desc}"

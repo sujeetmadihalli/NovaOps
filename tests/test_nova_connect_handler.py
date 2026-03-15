@@ -66,7 +66,8 @@ class TestNovaConnectHandler(unittest.TestCase):
         self.assertEqual(result["sessionState"]["intent"]["state"], "Fulfilled")
 
     @patch("lambda_handlers.nova_connect_handler.get_bedrock")
-    def test_rejection_detected(self, mock_get_bedrock):
+    @patch("lambda_handlers.nova_connect_handler._trigger_rejection")
+    def test_rejection_detected(self, mock_reject, mock_get_bedrock):
         mock_client = MagicMock()
         mock_client.converse.return_value = {
             "output": {
@@ -80,6 +81,7 @@ class TestNovaConnectHandler(unittest.TestCase):
         event = self._make_event(transcript="No, reject it")
         result = handler(event, None)
 
+        mock_reject.assert_called_once_with("http://localhost:8082", "inc-test-001")
         self.assertEqual(result["sessionState"]["dialogAction"]["type"], "Close")
 
     @patch("lambda_handlers.nova_connect_handler.get_bedrock")

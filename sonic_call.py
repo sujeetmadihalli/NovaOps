@@ -55,14 +55,10 @@ def play_audio(audio_bytes: bytes):
 def load_incident(incident_id: str):
     """Fetch the incident details from the backend."""
     try:
-        resc = requests.get(f"{API_URL}/api/incidents")
+        resc = requests.get(f"{API_URL}/api/incidents/{incident_id}", timeout=10)
         if resc.status_code != 200:
             return None
-        
-        incidents = resc.json().get("data", [])
-        for inc in incidents:
-            if inc.get("incident_id") == incident_id:
-                return inc
+        return resc.json().get("data")
     except Exception as e:
         print(f"Error fetching incident: {e}")
     return None
@@ -71,7 +67,15 @@ def trigger_approval(incident_id: str):
     """Hits the NovaOps API to approve the incident."""
     try:
         print("\n[System] Sending approval to NovaOps API...")
-        resc = requests.post(f"{API_URL}/api/incidents/{incident_id}/approve")
+        headers = {}
+        token = os.environ.get("NOVAOPS_APPROVAL_TOKEN", "").strip()
+        if token:
+            headers["X-NovaOps-Approval-Token"] = token
+        resc = requests.post(
+            f"{API_URL}/api/incidents/{incident_id}/approve",
+            headers=headers,
+            timeout=10,
+        )
         if resc.status_code == 200:
             print(f"[System] Successfully approved incident {incident_id}!")
             return True
@@ -79,6 +83,29 @@ def trigger_approval(incident_id: str):
             print(f"[System] Approval failed: {resc.text}")
     except Exception as e:
         print(f"[System] Error sending approval: {e}")
+    return False
+
+
+def trigger_rejection(incident_id: str):
+    """Hits the NovaOps API to reject (deny) the incident."""
+    try:
+        print("\n[System] Sending rejection to NovaOps API...")
+        headers = {}
+        token = os.environ.get("NOVAOPS_APPROVAL_TOKEN", "").strip()
+        if token:
+            headers["X-NovaOps-Approval-Token"] = token
+        resc = requests.post(
+            f"{API_URL}/api/incidents/{incident_id}/reject",
+            headers=headers,
+            timeout=10,
+        )
+        if resc.status_code == 200:
+            print(f"[System] Successfully rejected incident {incident_id}.")
+            return True
+        else:
+            print(f"[System] Rejection failed: {resc.text}")
+    except Exception as e:
+        print(f"[System] Error sending rejection: {e}")
     return False
 
 def simulated_voice_call(incident_id: str):
@@ -120,7 +147,7 @@ Rules:
     messages = []
     
     # We use bedrock runtime to simulate the conversational loop
-    bedrock = boto3.client("bedrock-runtime", region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-2"))
+    bedrock = boto3.client("bedrock-runtime", region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
 
     # Initial greeting
     try:
@@ -206,6 +233,7 @@ Rules:
                     print(f"\n🔊 Nova Sonic: {clean_reply}")
                 
                 print(f"\n🔊 Nova Sonic: Understood, remediation aborted. Goodbye!")
+                trigger_rejection(incident_id)
                 print("\n📵 Call disconnected.")
                 break
             else:

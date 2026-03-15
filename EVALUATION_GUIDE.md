@@ -1,4 +1,4 @@
-# NovaOps v2 -- Evaluation Guide
+# NovaOps -- Evaluation Guide
 
 This guide provides a step-by-step narrative to demonstrate the full power, complexity, and unique architectural design of NovaOps v2 to stakeholders and technical evaluators.
 
@@ -18,10 +18,10 @@ This guide provides a step-by-step narrative to demonstrate the full power, comp
 
 Before starting, ensure your environment is clean and ready:
 
-1. Ensure your `.env` contains real AWS Bedrock credentials (see `AWS_PERMISSIONS_GUIDE.md`).
+1. Ensure AWS Bedrock credentials are available (via `aws configure` or a local `.env`; see `AWS_PERMISSIONS_GUIDE.md`). Docker Compose runs in LocalStack/mock mode by default and does not require `.env`.
 2. Start the backend: `docker compose up -d`
 3. Have the dashboard open: `http://localhost:8082/dashboard/`
-4. Have a terminal open in the project directory ready to run `./trigger_live_outage.sh`.
+4. Have a terminal open in the project directory ready to run `./run_live_k8s_test.sh`.
 5. For voice escalation demo: set `NOVAOPS_VOICE_USE_MOCK=false` and configure Connect env vars (or keep mock mode to show the log output).
 
 ---
@@ -32,7 +32,7 @@ Before starting, ensure your environment is clean and ready:
 
 Tell the evaluators you are going to simulate a real-world production outage.
 
-1. Run `./trigger_live_outage.sh` in your terminal.
+1. Run `./run_live_k8s_test.sh` in your terminal.
 2. **Explain what's happening:** "This script spins up a real Minikube Kubernetes cluster, deploys our mock `dummy-service`, and aggressively spams a memory-leak endpoint. The pod will hit its 500Mi memory limit and Kubernetes will instantly `OOMKill` it. This simulates a classic, nasty production memory leak."
 
 ### Phase 2: Live Telemetry & The Multi-Agent War Room

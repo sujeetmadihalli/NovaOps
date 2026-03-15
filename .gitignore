@@ -17,9 +17,10 @@ venv/
 novaops_system.log
 dashboard.log
 novaops.log
+history.db
 .system_pids
 dashboard/node_modules/
-dashboard/package-lock.json
+evaluation/results/
 tests/.tmp/
 bin/
 plans/

@@ -56,6 +56,11 @@ class TestVoiceE2E_CriticalP1Incident(unittest.TestCase):
         if self.plans_dir.exists():
             shutil.rmtree(self.plans_dir, ignore_errors=True)
 
+        # _try_voice_escalation() writes artifacts to plans/{incident_id}/. Keep tests hermetic.
+        inv_dir = Path(server.__file__).resolve().parent.parent / "plans" / self.incident["incident_id"]
+        if inv_dir.exists():
+            shutil.rmtree(inv_dir, ignore_errors=True)
+
     def test_01_escalation_policy_detects_critical(self):
         """Step 1: Policy identifies P1 + high risk as critical."""
         with patch.dict(os.environ, {
@@ -272,6 +277,11 @@ class TestVoiceE2E_NonCriticalIncident(unittest.TestCase):
 class TestVoiceE2E_CallFailureFallback(unittest.TestCase):
     """Verify graceful degradation when Connect call fails."""
 
+    def tearDown(self):
+        inv_dir = Path(server.__file__).resolve().parent.parent / "plans" / "inc-fail"
+        if inv_dir.exists():
+            shutil.rmtree(inv_dir, ignore_errors=True)
+
     @patch("api.server.connect_caller")
     @patch("api.server.notifier")
     @patch("api.server.escalation_policy")
@@ -371,7 +381,8 @@ class TestVoiceE2E_LambdaConversation(unittest.TestCase):
         print(f"  PASS: Approval detected -> API callback triggered")
 
     @patch("lambda_handlers.nova_connect_handler.get_bedrock")
-    def test_rejection_flow(self, mock_bedrock):
+    @patch("lambda_handlers.nova_connect_handler._trigger_rejection")
+    def test_rejection_flow(self, mock_reject, mock_bedrock):
         from lambda_handlers.nova_connect_handler import handler
 
         mock_client = MagicMock()
@@ -385,6 +396,7 @@ class TestVoiceE2E_LambdaConversation(unittest.TestCase):
         result = handler(self._make_event(transcript="No, don't do anything"), None)
 
         self.assertEqual(result["sessionState"]["dialogAction"]["type"], "Close")
+        mock_reject.assert_called_once_with("http://localhost:8082", "e2e-lambda-001")
         print("  PASS: Rejection detected -> conversation closed")
 
     @patch("lambda_handlers.nova_connect_handler.get_bedrock")

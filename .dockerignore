@@ -8,7 +8,7 @@ history.db
 *.log
 evaluation/results/
 dummy-service/
+dashboard/node_modules/
 .git/
 .claude/
-*.md
 *.pdf

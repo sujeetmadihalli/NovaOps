@@ -227,7 +227,7 @@ def run(
         severity=gov_result.severity if gov_result else "P3",
         analysis=analysis_display,
         proposed_action=proposed_action,
-        status=gov_result.decision if gov_result else "UNKNOWN",
+        status=gov_result.status if gov_result else "UNKNOWN",
         report_path=str(report_path) if report_path else "",
     )
 

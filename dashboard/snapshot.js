@@ -9,7 +9,7 @@ const puppeteer = require('puppeteer');
     await page.setViewport({ width: 1400, height: 900 });
     
     console.log("Navigating to dashboard...");
-    await page.goto('http://localhost:8080');
+    await page.goto('http://localhost:8082/dashboard/');
     
     // Wait for the JS to fetch the incidents from the API
     console.log("Waiting for network idle...");

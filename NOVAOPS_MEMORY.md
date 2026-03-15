@@ -2,6 +2,52 @@
 
 Last updated: 2026-03-15
 
+## Implemented on 2026-03-15: Hardening & Bugfixes
+
+1. Optional approval token for Ghost Mode execution
+- Files: `api/server.py`, `lambda_handlers/nova_connect_handler.py`, `sonic_call.py`, `.env.example`, `README.md`
+- If `NOVAOPS_APPROVAL_TOKEN` is set, `POST /api/incidents/{id}/approve` and `POST /api/incidents/{id}/reject` now require `X-NovaOps-Approval-Token`.
+- Voice Lambda and `sonic_call.py` include the token header when configured.
+- Lambda now ignores unexpected `callback_url` values to reduce SSRF risk.
+
+2. Dashboard correctness + safety improvements
+- Files: `dashboard/app.js`, `dashboard/snapshot.js`
+- Dashboard now uses same-origin `/api/...` paths and fixes the PDF download endpoint mismatch.
+- PIR rendering now escapes HTML before inserting into the DOM to reduce XSS risk from generated content.
+- Snapshot script now targets `http://localhost:8082/dashboard/`.
+
+3. Log endpoint performance
+- File: `api/server.py`
+- `GET /api/logs` now tails the last lines efficiently instead of reading the entire log file.
+
+4. Kubernetes rollback execution
+- File: `tools/k8s_actions.py`
+- `rollback_deployment` in non-mock mode now performs a real rollback by patching the Deployment template to the previous ReplicaSet revision.
+
+5. SQLite backend thread-safety
+- File: `api/history_db.py`
+- Added a connection-level lock and enabled WAL mode when supported to reduce cross-thread contention.
+
+6. Docker/Git hygiene
+- Files: `.dockerignore`, `.gitignore`, `docker-compose.yml`
+- Docker builds now exclude `dashboard/node_modules/` and include required markdown assets (skills).
+- Git now ignores `history.db` and `evaluation/results/` artifacts.
+- `docker-compose.yml` no longer loads `.env` by default in LocalStack/mock mode (reduces accidental secret leakage).
+
+7. Slack/voice rejection + interactive approvals
+- Files: `api/server.py`, `api/slack_notifier.py`, `governance/audit_log.py`, `governance/gate.py`, `governance/report.py`, `lambda_handlers/nova_connect_handler.py`, `sonic_call.py`, `.env.example`, `README.md`, `tests/test_api_logic.py`, `tests/test_critical_escalation_integration.py`, `tests/test_nova_connect_handler.py`, `tests/test_voice_e2e_manual.py`
+- Added `POST /slack/actions` with Slack signature verification via `SLACK_SIGNING_SECRET`.
+- Added `POST /api/incidents/{id}/reject` to record human denial (DB status + audit trail + governance.json).
+- Voice Lambda and `sonic_call.py` now call `/reject` on `[ACTION_REJECTED]`.
+- Audit log event allowlist now includes `CONVERGENCE_CHECK` and `HUMAN_REJECTED`.
+- `GovernanceGate.approve_and_execute()` accepts an `actor` so Slack approvals can be attributed in the audit log.
+
+8. Simulation results now show in the dashboard (Docker/LocalStack backend)
+- Files: `run_simulations.sh`, `tools/sync_history_sqlite_to_dynamodb.py`
+- Root cause: the evaluation harness was writing incidents into local SQLite (`history.db`) while the dashboard API was reading from LocalStack DynamoDB.
+- `run_simulations.sh` now auto-detects LocalStack and sets `DYNAMODB_ENDPOINT`/`S3_ENDPOINT` + test creds so simulations write to DynamoDB and appear in `/api/incidents`.
+- Added a one-time sync tool to backfill existing SQLite incidents into DynamoDB when needed.
+
 ## Implemented on 2026-03-15: Critical Incident Voice Escalation
 
 ### New modules
@@ -29,6 +75,7 @@ Last updated: 2026-03-15
    - Conversation history carried in Lex session attributes (trimmed to 12 messages).
    - Detects `[ACTION_APPROVED]` / `[ACTION_REJECTED]` tokens.
    - On approval: calls back to `POST /api/incidents/{id}/approve`.
+   - On rejection: calls back to `POST /api/incidents/{id}/reject`.
    - On Bedrock failure: returns fallback message and closes conversation.
 
 ### Modified modules
@@ -62,7 +109,7 @@ Last updated: 2026-03-15
    - `tests/test_nova_connect_handler.py` -- 10 unit tests
    - `tests/test_critical_escalation_integration.py` -- 8 integration tests
    - `tests/test_voice_e2e_manual.py` -- 20 comprehensive E2E tests
-   - **Total: 104 tests passing** (75 new + 29 existing)
+   - **Total: 124 tests passing** (latest full suite run)
 
 ### Documentation updated
 
@@ -105,5 +152,4 @@ Last updated: 2026-03-15
 
 ## Sanity checks run
 
-1. Full test suite: `python -m pytest tests/ -v` -- 104 tests pass
-2. Pre-existing failures (4 tests requiring `strands` SDK) unchanged
+1. Full test suite: `python -m unittest discover -s tests -v` -- 124 tests pass (WSL venv, Python 3.10)

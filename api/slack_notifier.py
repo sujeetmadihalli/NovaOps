@@ -50,12 +50,14 @@ class SlackNotifier:
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "Approve"},
+                        "action_id": "approve_incident",
                         "style": "primary",
                         "value": f"approve_{incident_id}"
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "Reject"},
+                        "action_id": "reject_incident",
                         "style": "danger",
                         "value": f"reject_{incident_id}"
                     }
@@ -166,12 +168,14 @@ class SlackNotifier:
                 {
                     "type": "button",
                     "text": {"type": "plain_text", "text": "Approve"},
+                    "action_id": "approve_incident",
                     "style": "primary",
                     "value": f"approve_{incident_id}",
                 },
                 {
                     "type": "button",
                     "text": {"type": "plain_text", "text": "Reject"},
+                    "action_id": "reject_incident",
                     "style": "danger",
                     "value": f"reject_{incident_id}",
                 },

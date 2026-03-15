@@ -1,10 +1,31 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const API_URL = 'http://127.0.0.1:8082/api/incidents';
+    // Use same-origin API paths so the dashboard works whether accessed via
+    // http://localhost:8082/dashboard/ or http://127.0.0.1:8082/dashboard/.
+    const INCIDENTS_API = '/api/incidents';
+    const DOWNLOAD_PDF_API = '/api/download-pdf';
     const pirModal = document.getElementById('pir-modal');
     const pirLoading = document.getElementById('pir-loading');
     const pirContent = document.getElementById('pir-content');
     const pirCopyBtn = document.getElementById('pir-copy-btn');
     const pirDownloadBtn = document.getElementById('pir-download-btn');
+
+    function escapeHtml(text) {
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function renderInline(text) {
+        let line = escapeHtml(text);
+        // bold **text**
+        line = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        // italic *text*
+        line = line.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+        return line;
+    }
 
     // PIR Modal helpers
     function openPirModal() {
@@ -20,18 +41,15 @@ document.addEventListener('DOMContentLoaded', () => {
         return text
             .split('\n')
             .map(line => {
-                if (line.startsWith('## '))  return `<h2>${line.slice(3)}</h2>`;
-                if (line.startsWith('### ')) return `<h3>${line.slice(4)}</h3>`;
-                if (line === '---') return '<hr>';
-                // bold **text**
-                line = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-                // italic *text*
-                line = line.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
-                if (line.startsWith('- [ ]')) return `<p class="pir-check">☐ ${line.slice(5)}</p>`;
-                if (line.startsWith('- [x]')) return `<p class="pir-check">☑ ${line.slice(5)}</p>`;
-                if (line.startsWith('- ') || line.startsWith('* ')) return `<p class="pir-bullet">• ${line.slice(2)}</p>`;
-                if (line.trim() === '') return '<br>';
-                return `<p>${line}</p>`;
+                const raw = String(line);
+                if (raw.startsWith('## '))  return `<h2>${renderInline(raw.slice(3))}</h2>`;
+                if (raw.startsWith('### ')) return `<h3>${renderInline(raw.slice(4))}</h3>`;
+                if (raw === '---') return '<hr>';
+                if (raw.startsWith('- [ ]')) return `<p class="pir-check">☐ ${renderInline(raw.slice(5))}</p>`;
+                if (raw.startsWith('- [x]')) return `<p class="pir-check">☑ ${renderInline(raw.slice(5))}</p>`;
+                if (raw.startsWith('- ') || raw.startsWith('* ')) return `<p class="pir-bullet">• ${renderInline(raw.slice(2))}</p>`;
+                if (raw.trim() === '') return '<br>';
+                return `<p>${renderInline(raw)}</p>`;
             })
             .join('');
     }
@@ -61,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.disabled = true;
             
             // Fetch presigned URL from our backend
-            const response = await fetch(`${API_URL}/download-pdf?key=${encodeURIComponent(s3Key)}`);
+            const response = await fetch(`${DOWNLOAD_PDF_API}?key=${encodeURIComponent(s3Key)}`);
             if (!response.ok) throw new Error('Failed to get download link');
             
             const data = await response.json();
@@ -107,14 +125,14 @@ document.addEventListener('DOMContentLoaded', () => {
         openPirModal();
         try {
             // Try to get an existing PIR first
-            let response = await fetch(`${API_URL}/${incidentId}/report`);
+            let response = await fetch(`${INCIDENTS_API}/${incidentId}/report`);
             if (response.ok) {
                 const data = await response.json();
                 showPirContent(data.report, data.pdf_path);
                 return;
             }
             // Not found — generate a new one
-            response = await fetch(`${API_URL}/${incidentId}/report`, { method: 'POST' });
+            response = await fetch(`${INCIDENTS_API}/${incidentId}/report`, { method: 'POST' });
             if (!response.ok) throw new Error(`Server error: ${response.status}`);
             const data = await response.json();
             showPirContent(data.report, data.pdf_path);
@@ -168,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             if (refreshIcon) refreshIcon.classList.add('fa-spin');
 
-            const response = await fetch(API_URL);
+            const response = await fetch(INCIDENTS_API);
             if (!response.ok) throw new Error('Network response was not ok');
 
             const result = await response.json();
@@ -325,7 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!document.getElementById('logs-view').classList.contains('active')) return;
         
         try {
-            const response = await fetch('http://127.0.0.1:8082/api/logs');
+            const response = await fetch('/api/logs');
             if (response.ok) {
                 const result = await response.json();
                 

@@ -1,6 +1,8 @@
 import unittest
+import unittest
 import uuid
 import json
+import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -122,6 +124,62 @@ class ApiLogicTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 409)
         incident = self.db.get_incident("inc-executed")
         self.assertEqual(incident["status"], "auto_executed")
+
+    def test_reject_incident_marks_denied_and_updates_governance(self):
+        incident_id = "inc-reject-1"
+        self.db.log_incident(
+            incident_id=incident_id,
+            service_name="checkout",
+            alert_name="rollback proposed",
+            proposed_action={"tool": "rollback_deployment", "parameters": {"service_name": "checkout"}},
+            status="pending_approval",
+        )
+
+        plans_root = Path(server.__file__).resolve().parent.parent / "plans"
+        inv_dir = plans_root / incident_id
+        inv_dir.mkdir(parents=True, exist_ok=True)
+        gov_path = inv_dir / "governance.json"
+        gov_path.write_text(
+            json.dumps({
+                "incident_id": incident_id,
+                "decision": "REQUIRE_APPROVAL",
+                "policy_name": "rollback_always_requires_approval",
+                "reason": "test",
+                "risk_score": 80,
+                "severity": "P1",
+                "confidence": 0.5,
+                "confidence_source": "critic",
+                "action": "rollback_deployment",
+                "auto_executed": False,
+                "execution_result": {},
+                "status": "pending_approval",
+                "evaluated_at": "2026-01-01T00:00:00+00:00",
+            }, indent=2),
+            encoding="utf-8",
+        )
+
+        try:
+            with patch.object(server, "db", self.db):
+                response = server.reject_incident(incident_id)
+
+            self.assertEqual(response["status"], "denied")
+            incident = self.db.get_incident(incident_id)
+            self.assertEqual(incident["status"], "denied")
+
+            updated = json.loads(gov_path.read_text(encoding="utf-8"))
+            self.assertEqual(updated.get("status"), "denied")
+            self.assertIn("denied_at", updated)
+            self.assertEqual(updated.get("denied_by"), "HUMAN")
+
+            audit_path = inv_dir / "audit.jsonl"
+            self.assertTrue(audit_path.exists())
+            last = audit_path.read_text(encoding="utf-8").strip().splitlines()[-1]
+            entry = json.loads(last)
+            self.assertEqual(entry.get("event_type"), "HUMAN_REJECTED")
+        finally:
+            if inv_dir.exists():
+                shutil.rmtree(inv_dir, ignore_errors=True)
+            # Leave plans_root if other tests/artifacts use it.
 
     def test_get_incident_includes_validation_summary_from_artifact(self):
         report_dir = self.temp_dir / "incident-artifacts"

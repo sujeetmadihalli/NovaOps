@@ -39,6 +39,12 @@ class TestCriticalEscalationIntegration(unittest.TestCase):
         if self.temp_dir.exists():
             shutil.rmtree(self.temp_dir, ignore_errors=True)
 
+        # _try_voice_escalation() writes artifacts to plans/{incident_id}/. Keep tests hermetic.
+        plans_root = Path(server.__file__).resolve().parent.parent / "plans"
+        inv_dir = plans_root / "int-test-001"
+        if inv_dir.exists():
+            shutil.rmtree(inv_dir, ignore_errors=True)
+
     def _make_agent_result(self, severity="P1", risk_score=90, gov_status="pending_approval"):
         return {
             "incident_id": "int-test-001",

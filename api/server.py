@@ -2,9 +2,12 @@
 
 Endpoints:
   POST /webhook/pagerduty                    — receive alert, trigger war room
+  POST /slack/actions                        — Slack interactive callbacks (approve/reject buttons)
   GET  /api/incidents                        — incident history for dashboard
+  GET  /api/incidents/{id}                   — incident details for voice + tools
   GET  /api/incidents/{id}/report            — get/generate PIR
   POST /api/incidents/{id}/approve           — Ghost Mode approval (via GovernanceGate)
+  POST /api/incidents/{id}/reject            — Human rejection / deny execution
   GET  /api/governance/{id}/decision         — governance decision + risk score
   GET  /api/governance/{id}/audit            — append-only audit trail
   GET  /health                               — liveness probe
@@ -13,8 +16,14 @@ Endpoints:
 import logging
 import os
 import json
+import hashlib
+import hmac
+import re
 import sys
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+import time
+import urllib.parse
+from datetime import datetime, timezone
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -36,6 +45,8 @@ from tools.executor import RemediationExecutor
 from tools.k8s_actions import KubernetesActions
 
 LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
+S3_KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$")
+INCIDENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 class TeeLogger:
@@ -87,9 +98,18 @@ def _configure_logging() -> None:
         path = Path(log_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         resolved = str(path.resolve())
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
         # Replace stdout and stderr with TeeLogger
-        sys.stdout = TeeLogger(sys.stdout, resolved, prefix="\033[0;34m[API-stdout]\033[0m ")
-        sys.stderr = TeeLogger(sys.stderr, resolved, prefix="\033[0;31m[API-stderr]\033[0m ")
+        sys.stdout = TeeLogger(original_stdout, resolved, prefix="\033[0;34m[API-stdout]\033[0m ")
+        sys.stderr = TeeLogger(original_stderr, resolved, prefix="\033[0;31m[API-stderr]\033[0m ")
+
+        # Ensure any existing StreamHandlers follow the new sys.stdout/sys.stderr tee wrappers.
+        for handler in root.handlers:
+            if isinstance(handler, logging.FileHandler):
+                continue
+            if isinstance(handler, logging.StreamHandler):
+                handler.stream = sys.stderr if handler.stream is original_stderr else sys.stdout
     except Exception as exc:
         logging.getLogger("novaops.api").warning(f"Failed to attach file logger: {exc}")
 
@@ -104,13 +124,120 @@ def _env_bool(name: str, default: bool = True) -> bool:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
+
+def _load_cors_origins() -> list[str]:
+    raw = os.environ.get("NOVAOPS_CORS_ORIGINS", "").strip()
+    if not raw:
+        # Default to local dev origins. The dashboard uses same-origin /api paths,
+        # so CORS is usually only needed when opening static files directly.
+        return ["http://localhost:8082", "http://127.0.0.1:8082"]
+
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list) and all(isinstance(o, str) for o in parsed):
+            return parsed
+    except Exception:
+        pass
+
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+def _require_approval_token(request: Request) -> None:
+    """If NOVAOPS_APPROVAL_TOKEN is set, require the header to approve execution."""
+    expected = os.environ.get("NOVAOPS_APPROVAL_TOKEN", "").strip()
+    if not expected:
+        return
+
+    provided = (request.headers.get("X-NovaOps-Approval-Token") or "").strip()
+    if provided != expected:
+        raise HTTPException(status_code=401, detail="Missing or invalid approval token")
+
+
+def _tail_lines(path: str, max_lines: int = 500, chunk_size: int = 8192) -> list[str]:
+    """Read the last N lines of a potentially large text file efficiently."""
+    if max_lines <= 0:
+        return []
+
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            pos = f.tell()
+            buf = b""
+
+            while pos > 0 and buf.count(b"\n") <= max_lines:
+                read_size = min(chunk_size, pos)
+                pos -= read_size
+                f.seek(pos)
+                buf = f.read(read_size) + buf
+
+        lines = buf.splitlines()[-max_lines:]
+        return [line.decode("utf-8", errors="replace") for line in lines]
+    except FileNotFoundError:
+        return []
+    except Exception as exc:
+        logger.warning(f"Failed to tail log file {path!r}: {exc}")
+        return []
+
+
+def _verify_slack_signature(signing_secret: str, request: Request, raw_body: bytes) -> None:
+    """Verify Slack interactive request signature (https://api.slack.com/authentication/verifying-requests-from-slack)."""
+    timestamp = (request.headers.get("X-Slack-Request-Timestamp") or "").strip()
+    signature = (request.headers.get("X-Slack-Signature") or "").strip()
+
+    if not timestamp or not signature:
+        raise HTTPException(status_code=401, detail="Missing Slack signature headers")
+
+    try:
+        ts = int(timestamp)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid Slack timestamp")
+
+    if abs(time.time() - ts) > 60 * 5:
+        raise HTTPException(status_code=401, detail="Slack request timestamp too old")
+
+    basestring = b"v0:" + timestamp.encode("utf-8") + b":" + raw_body
+    digest = hmac.new(signing_secret.encode("utf-8"), basestring, hashlib.sha256).hexdigest()
+    expected = f"v0={digest}"
+
+    if not hmac.compare_digest(expected, signature):
+        raise HTTPException(status_code=401, detail="Invalid Slack signature")
+
+
+def _parse_slack_payload(raw_body: bytes) -> dict:
+    """Parse Slack interactive payload from x-www-form-urlencoded request bodies."""
+    try:
+        decoded = raw_body.decode("utf-8", errors="replace")
+        parsed = urllib.parse.parse_qs(decoded)
+        payload_str = (parsed.get("payload") or [""])[0]
+        if not payload_str:
+            raise ValueError("Missing Slack payload")
+        payload = json.loads(payload_str)
+        if not isinstance(payload, dict):
+            raise ValueError("Invalid Slack payload")
+        return payload
+    except json.JSONDecodeError as exc:
+        raise ValueError("Invalid Slack payload JSON") from exc
+
+
+def _slack_actor(payload: dict) -> str:
+    """Best-effort attribution for audit logs when actions come from Slack."""
+    user = payload.get("user") or {}
+    username = (user.get("username") or user.get("name") or "").strip()
+    user_id = (user.get("id") or "").strip()
+    raw = username or user_id
+    if not raw:
+        return "SLACK"
+    safe = re.sub(r"[^A-Za-z0-9_.:-]+", "_", raw)[:64]
+    return f"SLACK:{safe}"
+
+
 app = FastAPI(title="NovaOps v2 — Autonomous SRE War Room", openapi_url="/novaops.json")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_load_cors_origins(),
     allow_credentials=False,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -334,6 +461,45 @@ async def pagerduty_webhook(payload: AlertPayload, background_tasks: BackgroundT
     return {"status": "accepted", "message": "Investigation started"}
 
 
+@app.post("/slack/actions")
+async def slack_actions(request: Request, background_tasks: BackgroundTasks):
+    """Slack interactive message callback for approve/reject buttons."""
+    signing_secret = os.environ.get("SLACK_SIGNING_SECRET", "").strip()
+    if not signing_secret:
+        raise HTTPException(status_code=501, detail="SLACK_SIGNING_SECRET not configured")
+
+    raw_body = await request.body()
+    _verify_slack_signature(signing_secret, request, raw_body)
+
+    try:
+        payload = _parse_slack_payload(raw_body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    actions = payload.get("actions") or []
+    if not actions:
+        return {"response_type": "ephemeral", "text": "No action provided."}
+
+    value = (actions[0].get("value") or "").strip()
+    actor = _slack_actor(payload)
+
+    if value.startswith("approve_"):
+        incident_id = value[len("approve_"):]
+        if not INCIDENT_ID_PATTERN.fullmatch(incident_id):
+            raise HTTPException(status_code=400, detail="Invalid incident id")
+        background_tasks.add_task(_background_approve, incident_id, actor)
+        return {"response_type": "ephemeral", "text": f"Approval received for {incident_id}. Processing..."}
+
+    if value.startswith("reject_"):
+        incident_id = value[len("reject_"):]
+        if not INCIDENT_ID_PATTERN.fullmatch(incident_id):
+            raise HTTPException(status_code=400, detail="Invalid incident id")
+        background_tasks.add_task(_background_reject, incident_id, actor)
+        return {"response_type": "ephemeral", "text": f"Rejection received for {incident_id}. Processing..."}
+
+    return {"response_type": "ephemeral", "text": "Unknown action."}
+
+
 @app.get("/api/incidents")
 def get_incidents():
     history = db.get_recent_incidents(limit=50)
@@ -351,23 +517,18 @@ def get_incident(incident_id: str):
     return {"status": "success", "data": incident}
 
 
-@app.post("/api/incidents/{incident_id}/approve")
-def approve_incident(incident_id: str):
-    """Ghost Mode: human approves the remediation plan.
-
-    Execution is routed exclusively through GovernanceGate, which logs
-    HUMAN_OVERRIDE and EXECUTION_COMPLETE to the append-only audit trail
-    before returning. No executor call is made outside the gate.
-    """
+def _approve_incident_internal(incident_id: str, actor: str = "HUMAN") -> dict:
     incident = db.get_incident(incident_id)
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
 
     try:
-        gov_result = gate.approve_and_execute(incident_id, incident)
+        gov_result = gate.approve_and_execute(incident_id, incident, actor=actor)
         db.update_status(incident_id, gov_result.status)
-        generate_governance_report(incident_id)
-        logger.info(f"Incident {incident_id} approved: status={gov_result.status}")
+        gov_path = Path(__file__).parent.parent / "plans" / incident_id / "governance.json"
+        if gov_path.exists():
+            generate_governance_report(incident_id)
+        logger.info(f"Incident {incident_id} approved by {actor}: status={gov_result.status}")
         return {
             "status": gov_result.status,
             "incident_id": incident_id,
@@ -382,6 +543,114 @@ def approve_incident(incident_id: str):
         db.update_status(incident_id, "execution_failed")
         logger.error(f"Execution failed for incident {incident_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Execution failed: {e}")
+
+
+def _reject_incident_internal(incident_id: str, actor: str = "HUMAN") -> dict:
+    incident = db.get_incident(incident_id)
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    inv_dir = Path(__file__).parent.parent / "plans" / incident_id
+    gov_path = inv_dir / "governance.json"
+    if not gov_path.exists():
+        raise HTTPException(status_code=409, detail="Governance decision not found for incident.")
+
+    try:
+        persisted = json.loads(gov_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read governance data: {e}")
+
+    current_status = persisted.get("status")
+    if current_status == "denied":
+        # Idempotency: ensure DB matches and return success.
+        db.update_status(incident_id, "denied")
+        generate_governance_report(incident_id)
+        return {
+            "status": "denied",
+            "incident_id": incident_id,
+            "tool": persisted.get("action", ""),
+            "risk_score": persisted.get("risk_score", 0),
+        }
+
+    if current_status in {"auto_executed", "executed"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Incident already executed with status={current_status}.",
+        )
+    if current_status == "execution_failed":
+        raise HTTPException(
+            status_code=409,
+            detail="Incident already attempted execution and cannot be denied.",
+        )
+
+    inv_dir.mkdir(parents=True, exist_ok=True)
+    AuditLog(incident_id).log("HUMAN_REJECTED", actor=actor, data={
+        "original_decision": persisted.get("decision", "unknown"),
+        "original_policy": persisted.get("policy_name", "unknown"),
+        "risk_score": persisted.get("risk_score", 0),
+        "action": persisted.get("action", ""),
+    })
+
+    updated = {
+        **persisted,
+        "status": "denied",
+        "denied_at": datetime.now(timezone.utc).isoformat(),
+        "denied_by": actor,
+    }
+    try:
+        gov_path.write_text(json.dumps(updated, indent=2, default=str), encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to persist governance denial: {e}")
+
+    db.update_status(incident_id, "denied")
+    generate_governance_report(incident_id)
+    logger.info(f"Incident {incident_id} rejected by {actor}")
+    return {
+        "status": "denied",
+        "incident_id": incident_id,
+        "tool": updated.get("action", ""),
+        "risk_score": updated.get("risk_score", 0),
+    }
+
+
+def _background_approve(incident_id: str, actor: str) -> None:
+    try:
+        _approve_incident_internal(incident_id, actor=actor)
+    except HTTPException as exc:
+        logger.warning(f"Slack approval failed for {incident_id}: {exc.detail}")
+    except Exception as exc:
+        logger.error(f"Slack approval crashed for {incident_id}: {exc}")
+
+
+def _background_reject(incident_id: str, actor: str) -> None:
+    try:
+        _reject_incident_internal(incident_id, actor=actor)
+    except HTTPException as exc:
+        logger.warning(f"Slack rejection failed for {incident_id}: {exc.detail}")
+    except Exception as exc:
+        logger.error(f"Slack rejection crashed for {incident_id}: {exc}")
+
+
+@app.post("/api/incidents/{incident_id}/approve")
+def approve_incident(incident_id: str, request: Request = None):
+    """Ghost Mode: human approves the remediation plan.
+
+    Execution is routed exclusively through GovernanceGate, which logs
+    HUMAN_OVERRIDE and EXECUTION_COMPLETE to the append-only audit trail
+    before returning. No executor call is made outside the gate.
+    """
+    # FastAPI injects Request at runtime; unit tests may call this function directly.
+    if request is not None:
+        _require_approval_token(request)
+    return _approve_incident_internal(incident_id, actor="HUMAN")
+
+
+@app.post("/api/incidents/{incident_id}/reject")
+def reject_incident(incident_id: str, request: Request = None):
+    """Ghost Mode: human rejects the remediation plan (deny execution)."""
+    if request is not None:
+        _require_approval_token(request)
+    return _reject_incident_internal(incident_id, actor="HUMAN")
 
 
 @app.post("/api/incidents/{incident_id}/report")
@@ -403,21 +672,19 @@ def create_pir(incident_id: str):
         service_name=incident.get("service_name", ""),
     )
     s3_key = None
-    print(f"DEBUG create_pir received pdf_path from generate_pir: {pdf_path}")
+    logger.debug(f"create_pir received pdf_path={pdf_path!r}")
     if pdf_path:
         s3_key = os.path.basename(pdf_path)
         s3_endpoint = os.environ.get("S3_ENDPOINT", None)
-        client_kwargs = dict(region_name="us-east-1")
+        client_kwargs = dict(region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
         if s3_endpoint:
             client_kwargs.update(endpoint_url=s3_endpoint, aws_access_key_id="test", aws_secret_access_key="test")
         s3_client = boto3.client("s3", **client_kwargs)
         try:
-            print(f"DEBUG uploading to S3 with path {pdf_path}")
+            logger.info(f"Uploading PIR PDF to S3 bucket novaops-pir-reports as key={s3_key}")
             s3_client.upload_file(pdf_path, "novaops-pir-reports", s3_key)
-            print(f"DEBUG success upload to S3 with key {s3_key}")
             logger.info(f"Uploaded {s3_key} to S3 novaops-pir-reports bucket.")
         except Exception as e:
-            print(f"DEBUG Failed to upload to S3: {e}")
             logger.error(f"Failed to upload {s3_key} to S3: {e}")
             s3_key = None
 
@@ -480,23 +747,24 @@ def get_governance_audit(incident_id: str):
 @app.get("/api/logs")
 def get_live_logs():
     """Tail the unified novaops.log file for the dashboard live terminal."""
-    try:
-        log_path = os.environ.get("NOVAOPS_LOG_PATH", "novaops.log")
-        with open(log_path, "r", encoding="utf-8") as f:
-            all_lines = f.readlines()
-        noise_patterns = ["GET /api/incidents", "GET /api/logs"]
-        filtered = [l for l in all_lines if not any(p in l for p in noise_patterns)]
-        last_lines = filtered[-500:] if len(filtered) > 500 else filtered
-        return {"status": "success", "logs": last_lines}
-    except FileNotFoundError:
+    log_path = os.environ.get("NOVAOPS_LOG_PATH", "novaops.log")
+    lines = _tail_lines(log_path, max_lines=2000)
+    if not lines:
         return {"status": "success", "logs": ["Waiting for novaops.log buffer to initialize..."]}
+
+    noise_patterns = ["GET /api/incidents", "GET /api/logs"]
+    filtered = [l for l in lines if not any(p in l for p in noise_patterns)]
+    last_lines = filtered[-500:] if len(filtered) > 500 else filtered
+    return {"status": "success", "logs": last_lines}
 
 
 @app.get("/api/download-pdf")
 def get_pdf_download_url(key: str):
     """Generate a presigned S3 URL for downloading a PIR PDF (LocalStack in dev, real S3 in prod)."""
+    if not S3_KEY_PATTERN.fullmatch(key):
+        raise HTTPException(status_code=400, detail="Invalid PDF key")
     s3_endpoint = os.environ.get("S3_ENDPOINT", None)
-    client_kwargs = dict(region_name="us-east-1")
+    client_kwargs = dict(region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
     if s3_endpoint:
         client_kwargs.update(
             endpoint_url=s3_endpoint,

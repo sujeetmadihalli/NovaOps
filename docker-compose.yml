@@ -28,8 +28,6 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8082:8000"          # Expose API on host port 8082
-    env_file:
-      - .env                   # Real AWS creds for Bedrock LLM
     environment:
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test

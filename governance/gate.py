@@ -164,13 +164,14 @@ class GovernanceGate:
     # approve_and_execute — called from /api/incidents/{id}/approve
     # ------------------------------------------------------------------
 
-    def approve_and_execute(self, incident_id: str, incident: dict) -> GovernanceResult:
+    def approve_and_execute(self, incident_id: str, incident: dict, actor: str = "HUMAN") -> GovernanceResult:
         """Human-approved execution path.
 
         Loads the persisted governance decision, logs HUMAN_OVERRIDE, then
         executes. The gate is the single path to execution; no call to
         executor.execute() is made outside this class.
         """
+        actor = actor or "HUMAN"
         audit = AuditLog(incident_id)
         persisted = _load_governance(incident_id)
         decision = persisted.get("decision")
@@ -180,10 +181,12 @@ class GovernanceGate:
             raise ValueError("Governance decision not found for incident.")
         if decision == "DENY":
             raise ValueError("Governance denied execution for this incident.")
+        if current_status == "denied":
+            raise ValueError("Incident was denied by a human and cannot be executed.")
         if current_status in {"auto_executed", "executed"}:
             raise ValueError(f"Incident already executed with status={current_status}.")
 
-        audit.log("HUMAN_OVERRIDE", actor="HUMAN", data={
+        audit.log("HUMAN_OVERRIDE", actor=actor, data={
             "original_decision": decision or "unknown",
             "original_policy": persisted.get("policy_name", "unknown"),
             "risk_score": persisted.get("risk_score", 0),
@@ -192,7 +195,7 @@ class GovernanceGate:
 
         tool = incident.get("proposed_tool", persisted.get("action", ""))
         executor_incident = self._executor_incident(incident)
-        audit.log("EXECUTION_STARTED", actor="HUMAN", data={
+        audit.log("EXECUTION_STARTED", actor=actor, data={
             "tool": tool,
             "trigger": "human_approval",
         })
@@ -200,7 +203,7 @@ class GovernanceGate:
         execution_result = self._executor.execute(executor_incident)
         status = "executed" if execution_result.get("success") else "execution_failed"
 
-        audit.log("EXECUTION_COMPLETE", actor="HUMAN", data={
+        audit.log("EXECUTION_COMPLETE", actor=actor, data={
             "tool": tool,
             "success": execution_result.get("success", False),
             "result": execution_result,

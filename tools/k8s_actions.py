@@ -26,7 +26,55 @@ class KubernetesActions:
             return {"success": True, "message": f"Rolled back deployment/{service_name} to previous revision"}
 
         try:
-            return {"success": True, "message": f"Rollback initiated for {service_name}"}
+            deployment = self.apps_v1.read_namespaced_deployment(
+                name=service_name,
+                namespace=namespace,
+            )
+
+            match_labels = getattr(getattr(deployment.spec, "selector", None), "match_labels", None) or {}
+            label_selector = ",".join(f"{k}={v}" for k, v in match_labels.items()) or None
+
+            replica_sets = self.apps_v1.list_namespaced_replica_set(
+                namespace=namespace,
+                label_selector=label_selector,
+            ).items
+
+            owned = []
+            for rs in replica_sets:
+                owners = getattr(rs.metadata, "owner_references", None) or []
+                if not any(o.kind == "Deployment" and o.name == service_name for o in owners):
+                    continue
+
+                annotations = getattr(rs.metadata, "annotations", None) or {}
+                raw_rev = annotations.get("deployment.kubernetes.io/revision", "0")
+                try:
+                    rev = int(raw_rev)
+                except (TypeError, ValueError):
+                    continue
+                owned.append((rev, rs))
+
+            owned.sort(key=lambda x: x[0], reverse=True)
+            if len(owned) < 2:
+                return {
+                    "success": False,
+                    "error": f"No previous ReplicaSet revision found for deployment/{service_name}.",
+                }
+
+            target_rev, target_rs = owned[1]
+            # Use the model object directly so the K8s client can serialize it
+            # with the correct API field names.
+            template = target_rs.spec.template
+
+            self.apps_v1.patch_namespaced_deployment(
+                name=service_name,
+                namespace=namespace,
+                body={"spec": {"template": template}},
+            )
+
+            return {
+                "success": True,
+                "message": f"Rolled back deployment/{service_name} to revision {target_rev}",
+            }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
