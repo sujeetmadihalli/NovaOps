@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NovaOps — Autonomous SRE War Room</title>
+  <meta name="description" content="Multi-agent SRE war room powered entirely by AWS. Agents, LLMs, voice calls — zero vendor stitching." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ── Nav ── -->
+  <header class="nav" id="nav">
+    <a href="#" class="nav-logo">
+      <div class="logo-mark"></div>
+      NovaOps
+    </a>
+    <nav class="nav-menu">
+      <a href="#how">How it works</a>
+      <a href="#voice">Voice AI</a>
+      <a href="#stack">Stack</a>
+      <a href="https://github.com/sujeetmadihalli/NovaOps" target="_blank" class="nav-gh">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        Star on GitHub
+      </a>
+    </nav>
+  </header>
+
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <p class="hero-eyebrow">Autonomous incident response on AWS</p>
+        <h1>The SRE that investigates, validates, and <span class="hero-accent">calls you on the phone.</span></h1>
+        <p class="hero-desc">
+          8 AI agents on <strong>AWS Strands Agents SDK</strong>. Reasoning by <strong>Amazon Nova</strong>.
+          Voice calls via <strong>Amazon Connect + Nova Sonic</strong>. Storage on <strong>DynamoDB + S3</strong>.
+          No LangChain. No OpenAI. No ElevenLabs. Pure AWS, end to end.
+        </p>
+        <div class="hero-btns">
+          <a href="https://github.com/sujeetmadihalli/NovaOps" target="_blank" class="btn-main">
+            View repository
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+          <a href="#how" class="btn-ghost">See architecture</a>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="term">
+          <div class="term-bar">
+            <div class="term-dots"><i></i><i></i><i></i></div>
+            <span>novaops &mdash; live</span>
+          </div>
+          <div class="term-body" id="term">
+            <p><s-t>13:42:01</s-t> <s-b>webhook</s-b> OOMKilled on checkout-service</p>
+            <p class="d1"><s-t>13:42:03</s-t> <s-p>triage</s-p> domain=oom severity=<s-r>P1</s-r></p>
+            <p class="d2"><s-t>13:42:05</s-t> <s-p>war-room</s-p> dispatching 4 analysts...</p>
+            <p class="d3"><s-t>13:42:11</s-t> <s-p>root-cause</s-p> heap usage 97%, leak in /api/v2/cart</p>
+            <p class="d4"><s-t>13:42:14</s-t> <s-o>jury</s-o> 4 jurors deliberating (blind context)</p>
+            <p class="d5"><s-t>13:42:19</s-t> <s-o>jury</s-o> verdict: restart_pods (conf: 0.88)</p>
+            <p class="d6"><s-t>13:42:20</s-t> <s-g>converge</s-g> WAR ROOM + JURY AGREE &uarr; +0.15</p>
+            <p class="d7"><s-t>13:42:20</s-t> <s-g>governance</s-g> risk=90 &rarr; REQUIRE_APPROVAL</p>
+            <p class="d8"><s-t>13:42:21</s-t> <s-r>escalation</s-r> CRITICAL &mdash; placing outbound call</p>
+            <p class="d9"><s-t>13:42:24</s-t> <s-y>nova-voice</s-y> "Hey, checkout-service is OOM..."</p>
+            <p class="d10"><s-t>13:42:38</s-t> <s-y>nova-voice</s-y> engineer: "go ahead, restart it"</p>
+            <p class="d11"><s-t>13:42:39</s-t> <s-g>approved</s-g> restart_pods executed</p>
+          </div>
+        </div>
+        <div class="hero-badge-float">
+          <span class="pulse"></span>
+          100% AWS
+        </div>
+      </div>
+    </div>
+    <div class="hero-scroll-hint" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+    </div>
+  </section>
+
+  <!-- ── The pitch ── -->
+  <section class="pitch">
+    <div class="wrap">
+      <div class="pitch-card">
+        <div class="pitch-left">
+          <span class="tag tag-red">The problem</span>
+          <h2>Incident at 3 AM.<br/>45 minutes just to <em>understand</em> what broke.</h2>
+          <p>Pull logs. Check Kubernetes. Query Prometheus. Read recent commits. Page someone. Repeat. By the time a human understands the root cause, users have already noticed.</p>
+        </div>
+        <div class="pitch-right">
+          <span class="tag tag-green">NovaOps</span>
+          <h2>8 AI agents investigate.<br/>A jury validates.<br/><em>Your phone rings.</em></h2>
+          <p>Under 60 seconds from alert to proposed fix. The AI never auto-executes critical actions &mdash; it explains the situation on a phone call and waits for your verbal "go ahead."</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Why all-AWS ── -->
+  <section class="versus">
+    <div class="wrap">
+      <span class="tag">Why it matters</span>
+      <h2>Everyone else stitches 5 vendors together.<br/>NovaOps uses one cloud.</h2>
+      <div class="vs-grid">
+        <div class="vs-col vs-others">
+          <h3>Typical AI agent stack</h3>
+          <div class="vs-row"><span>Framework</span> LangChain / LangGraph / CrewAI / Letta</div>
+          <div class="vs-row"><span>LLMs</span> OpenAI / Claude / Kimi / Minimax</div>
+          <div class="vs-row"><span>Voice AI</span> ElevenLabs / Sarvam AI / Deepgram</div>
+          <div class="vs-row"><span>Telephony</span> Twilio / Vonage / Plivo</div>
+          <div class="vs-row"><span>Storage</span> MongoDB / Postgres / Pinecone</div>
+          <div class="vs-row"><span>Compute</span> Vercel / Railway / Heroku</div>
+          <p class="vs-verdict vs-bad">6+ vendors. 6+ API keys. 6+ bills. Fragile glue code everywhere.</p>
+        </div>
+        <div class="vs-col vs-nova">
+          <h3>NovaOps &mdash; 100% AWS</h3>
+          <div class="vs-row"><span>Framework</span> AWS Strands Agents SDK</div>
+          <div class="vs-row"><span>LLMs</span> Amazon Nova 2 Lite via Amazon Bedrock</div>
+          <div class="vs-row"><span>Voice AI</span> Amazon Nova Sonic via Amazon Bedrock</div>
+          <div class="vs-row"><span>Telephony</span> Amazon Connect + Amazon Lex V2 + AWS Lambda</div>
+          <div class="vs-row"><span>Storage</span> Amazon DynamoDB + Amazon S3</div>
+          <div class="vs-row"><span>Compute</span> AWS Lambda + Amazon ECS / EC2</div>
+          <p class="vs-verdict vs-good">One cloud. One IAM. One bill. Zero vendor stitching.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── How it works ── -->
+  <section class="how" id="how">
+    <div class="wrap">
+      <span class="tag">Architecture</span>
+      <h2>Three stages. Two independent pipelines. One governance gate.</h2>
+      <p class="how-sub">The Jury never sees the War Room's reasoning. If they disagree, execution is blocked.</p>
+
+      <div class="stages">
+        <div class="stage">
+          <div class="stage-no">01</div>
+          <h3>War Room</h3>
+          <p>Deep sequential investigation</p>
+          <ul>
+            <li>Triage Agent classifies domain &amp; severity</li>
+            <li>4 analysts run in parallel &mdash; logs, metrics, K8s, GitHub</li>
+            <li>Root Cause Reasoner synthesizes findings</li>
+            <li>Critic Agent adversarially reviews (max 3 loops)</li>
+            <li>Remediation Planner proposes action</li>
+          </ul>
+        </div>
+        <div class="stage stage-alt">
+          <div class="stage-no">02</div>
+          <h3>Blind Jury</h3>
+          <p>Independent validation panel</p>
+          <ul>
+            <li>4 specialist jurors receive <strong>only raw context</strong></li>
+            <li>Parallel deliberation with timeout isolation</li>
+            <li>Judge LLM synthesizes verdicts</li>
+            <li>6-check Escalation Gate catches edge cases</li>
+            <li>No War Room influence &mdash; prevents groupthink</li>
+          </ul>
+        </div>
+        <div class="stage">
+          <div class="stage-no">03</div>
+          <h3>Convergence &amp; Governance</h3>
+          <p>Final decision layer</p>
+          <ul>
+            <li>Compares War Room vs Jury proposed actions</li>
+            <li>Agreement: confidence +0.15</li>
+            <li>Disagreement: confidence &minus;0.30, forced approval</li>
+            <li>Policy engine scores risk 0&ndash;100</li>
+            <li>Critical incidents trigger outbound voice call</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Voice Escalation ── -->
+  <section class="voice" id="voice">
+    <div class="wrap">
+      <div class="voice-layout">
+        <div class="voice-left">
+          <span class="tag tag-amber">New feature</span>
+          <h2>Your phone rings.<br/>Nova explains the incident.<br/>You say "go ahead."</h2>
+          <p>When a P1 incident hits with risk score above 85, NovaOps doesn't just send a Slack message. It places a real outbound phone call via Amazon Connect, powered by a real-time Nova AI conversation.</p>
+
+          <div class="voice-flow">
+            <div class="flow-step">
+              <div class="flow-num">1</div>
+              <div>
+                <strong>Escalation policy triggers</strong>
+                <span>Severity P1 + risk &ge; 85</span>
+              </div>
+            </div>
+            <div class="flow-step">
+              <div class="flow-num">2</div>
+              <div>
+                <strong>Amazon Connect dials on-call</strong>
+                <span>Real outbound phone call</span>
+              </div>
+            </div>
+            <div class="flow-step">
+              <div class="flow-num">3</div>
+              <div>
+                <strong>Nova AI explains the situation</strong>
+                <span>Real-time conversation via Lex + Lambda + Bedrock</span>
+              </div>
+            </div>
+            <div class="flow-step">
+              <div class="flow-num">4</div>
+              <div>
+                <strong>"Yes, go ahead"</strong>
+                <span>Verbal approval triggers remediation through governance gate</span>
+              </div>
+            </div>
+          </div>
+          <p class="voice-fallback">If the call fails? Automatic Slack critical escalation. No incident is ever dropped.</p>
+        </div>
+        <div class="voice-right">
+          <div class="phone-mock">
+            <div class="phone-status-bar">
+              <span>9:41</span>
+              <span></span>
+            </div>
+            <div class="phone-call-screen">
+              <div class="phone-avatar">N</div>
+              <div class="phone-caller">NovaOps SRE</div>
+              <div class="phone-timer" id="phone-timer">00:00</div>
+              <div class="phone-wave">
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+              </div>
+              <div class="phone-transcript">
+                <p class="pt-ai">"Hey, this is NovaOps. Checkout-service just hit a P1 OOM event. Heap usage is at 97%. We're recommending an immediate pod restart. Want me to go ahead?"</p>
+                <p class="pt-human">"Yes, do it."</p>
+                <p class="pt-ai pt-confirm">"Approved. Restarting pods now. I'll notify the team. Goodbye."</p>
+              </div>
+            </div>
+            <div class="phone-actions">
+              <div class="phone-btn-end">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Bento features ── -->
+  <section class="bento">
+    <div class="wrap">
+      <span class="tag">Capabilities</span>
+      <h2>Everything an SRE team needs. Fully autonomous.</h2>
+      <div class="bento-grid">
+        <div class="bento-item bento-wide">
+          <h3>Ghost Mode</h3>
+          <p>AI proposes, humans approve. Every remediation requires explicit consent &mdash; verbal on a call, a Slack button, or a dashboard click. The AI never auto-executes critical actions. Full append-only audit trail for compliance.</p>
+        </div>
+        <div class="bento-item">
+          <h3>6 Failure Domains</h3>
+          <p>OOM, traffic surge, deadlock, config drift, dependency failure, cascading failure. Domain-specific playbooks with targeted investigation strategies.</p>
+        </div>
+        <div class="bento-item">
+          <h3>Risk Scoring</h3>
+          <p>Policy engine computes risk 0&ndash;100 from action weight + severity + confidence. Rollbacks always need approval. P1 always needs approval.</p>
+        </div>
+        <div class="bento-item">
+          <h3>Post-Incident Reports</h3>
+          <p>Auto-generated PIR with root cause analysis, timeline, and remediation steps. PDF exported to S3. Nobody writes post-mortems manually.</p>
+        </div>
+        <div class="bento-item bento-wide">
+          <h3>104 Tests. Full Coverage.</h3>
+          <p>Unit tests for every module. Integration tests for the full critical path. E2E tests simulating real P1 OOM incidents through escalation, voice call, and Slack fallback. Mock mode works without any AWS credentials.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Tech stack ── -->
+  <section class="stack" id="stack">
+    <div class="wrap">
+      <span class="tag">Built entirely on AWS</span>
+      <h2>Every layer is AWS. Here's the full stack.</h2>
+      <div class="stack-section">
+        <h3 class="stack-category">AI &amp; Agents</h3>
+        <div class="stack-grid">
+          <div class="stack-item si-highlight">
+            <div class="stack-icon si-accent">SA</div>
+            <div><strong>AWS Strands Agents SDK</strong><br/><span>Multi-agent orchestration framework &mdash; War Room graph, tool use, parallel dispatch</span></div>
+          </div>
+          <div class="stack-item si-highlight">
+            <div class="stack-icon si-accent">Nova</div>
+            <div><strong>Amazon Nova 2 Lite</strong><br/><span>LLM inference for all 8 agents, jury, critic, and governance reasoning</span></div>
+          </div>
+          <div class="stack-item si-highlight">
+            <div class="stack-icon si-accent">Sonic</div>
+            <div><strong>Amazon Nova Sonic</strong><br/><span>Real-time voice AI for conversational phone calls with on-call engineers</span></div>
+          </div>
+          <div class="stack-item">
+            <div class="stack-icon">BR</div>
+            <div><strong>Amazon Bedrock</strong><br/><span>Managed foundation model platform &mdash; single API for all Nova models</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="stack-section">
+        <h3 class="stack-category">Voice &amp; Telephony</h3>
+        <div class="stack-grid">
+          <div class="stack-item">
+            <div class="stack-icon si-accent">CN</div>
+            <div><strong>Amazon Connect</strong><br/><span>Outbound phone calls to on-call engineers via StartOutboundVoiceContact</span></div>
+          </div>
+          <div class="stack-item">
+            <div class="stack-icon si-accent">Lex</div>
+            <div><strong>Amazon Lex V2</strong><br/><span>Speech-to-text transcription and conversation turn management</span></div>
+          </div>
+          <div class="stack-item">
+            <div class="stack-icon">Polly</div>
+            <div><strong>Amazon Polly</strong><br/><span>Text-to-speech for incident briefing playback in Contact Flow</span></div>
+          </div>
+          <div class="stack-item">
+            <div class="stack-icon">&lambda;</div>
+            <div><strong>AWS Lambda</strong><br/><span>Serverless Lex fulfillment &mdash; bridges speech to Nova real-time conversation</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="stack-section">
+        <h3 class="stack-category">Data &amp; Infrastructure</h3>
+        <div class="stack-grid">
+          <div class="stack-item">
+            <div class="stack-icon">DB</div>
+            <div><strong>Amazon DynamoDB</strong><br/><span>Incident history, status tracking, PIR storage</span></div>
+          </div>
+          <div class="stack-item">
+            <div class="stack-icon">S3</div>
+            <div><strong>Amazon S3</strong><br/><span>Post-Incident Report PDFs with presigned download URLs</span></div>
+          </div>
+          <div class="stack-item">
+            <div class="stack-icon">KB</div>
+            <div><strong>Bedrock Knowledge Bases</strong><br/><span>RAG retrieval from runbooks and past incident learnings</span></div>
+          </div>
+          <div class="stack-item">
+            <div class="stack-icon">LS</div>
+            <div><strong>LocalStack</strong><br/><span>Local dev emulation of DynamoDB + S3 &mdash; zero AWS spend for testing</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA ── -->
+  <section class="cta">
+    <div class="wrap">
+      <h2>Try it in 3 commands.</h2>
+      <div class="cta-code">
+        <code>$ git clone https://github.com/sujeetmadihalli/NovaOps.git</code>
+        <code>$ pip install -r requirements.txt</code>
+        <code>$ NOVAOPS_USE_MOCK=1 python -m agents "P1 OOM on checkout-service"</code>
+      </div>
+      <a href="https://github.com/sujeetmadihalli/NovaOps" target="_blank" class="btn-main btn-lg">
+        Get started
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+    </div>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer class="foot">
+    <div class="wrap foot-inner">
+      <div>
+        <div class="logo-mark-sm"></div>
+        <strong>NovaOps</strong>
+      </div>
+      <p>Built for the AWS Amazon Nova Hackathon</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
