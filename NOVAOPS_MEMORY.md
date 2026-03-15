@@ -1,8 +1,82 @@
 # NovaOps Memory Snapshot
 
-Last updated: 2026-03-13
+Last updated: 2026-03-15
 
-## Implemented in this session
+## Implemented on 2026-03-15: Critical Incident Voice Escalation
+
+### New modules
+
+1. **Escalation Policy Engine** (`api/escalation_policy.py`)
+   - Classifies incidents as critical vs normal based on severity + risk score.
+   - Configurable via `CRITICAL_SEVERITY_LEVELS` (default: `P1`) and `CRITICAL_RISK_SCORE_THRESHOLD` (default: `85`).
+   - Master switch: `NOVAOPS_VOICE_ESCALATION_ENABLED`.
+   - Auto-executed incidents are automatically skipped.
+
+2. **Voice Summary Builder** (`api/voice_summary.py`)
+   - `build_briefing_script()`: generates <=60-word TTS script for Polly playback.
+   - `build_system_prompt()`: generates full Nova system prompt for real-time conversation.
+   - Includes incident ID, service, severity, domain, analysis excerpt, proposed action, approval/rejection tokens.
+
+3. **Amazon Connect Caller** (`api/connect_caller.py`)
+   - Wraps `StartOutboundVoiceContact` API.
+   - Passes incident context as Contact Flow attributes.
+   - Mock mode logs calls instead of dialing.
+   - Returns `CallResult` with success flag, contact_id, or error.
+
+4. **Lambda Handler** (`lambda_handlers/nova_connect_handler.py`)
+   - Lex V2 fulfillment Lambda for Connect Contact Flow.
+   - Bridges caller speech to Nova via `bedrock.converse()`.
+   - Conversation history carried in Lex session attributes (trimmed to 12 messages).
+   - Detects `[ACTION_APPROVED]` / `[ACTION_REJECTED]` tokens.
+   - On approval: calls back to `POST /api/incidents/{id}/approve`.
+   - On Bedrock failure: returns fallback message and closes conversation.
+
+### Modified modules
+
+5. **Slack Notifier** (`api/slack_notifier.py`)
+   - Added `send_critical_escalation()` method.
+   - High-visibility Block Kit message with severity, call status, escalation reasons.
+   - Used as supplement to phone call or fallback when call fails.
+
+6. **Server Integration** (`api/server.py`)
+   - Added `_try_voice_escalation()` function hooked into `trigger_agent_loop()`.
+   - Called after `db.log_incident()` and `notifier.send_incident_plan()`.
+   - Flow: evaluate policy -> build briefing/prompt -> place call -> Slack critical -> save artifact.
+   - Added `_save_escalation_artifact()` to persist `voice_escalation.json` in `plans/{incident_id}/`.
+   - Imported and initialized `EscalationPolicy` and `ConnectCaller` as module-level singletons.
+
+### Configuration added
+
+7. **Environment variables** (documented in `.env.example`):
+   - `NOVAOPS_VOICE_ESCALATION_ENABLED`, `NOVAOPS_VOICE_USE_MOCK`
+   - `CRITICAL_SEVERITY_LEVELS`, `CRITICAL_RISK_SCORE_THRESHOLD`
+   - `CONNECT_INSTANCE_ID`, `CONNECT_CONTACT_FLOW_ID`, `CONNECT_SOURCE_PHONE`, `ONCALL_PHONE_NUMBER`
+   - `NOVAOPS_API_CALLBACK_URL`
+
+### Tests added
+
+8. Test files created:
+   - `tests/test_escalation_policy.py` -- 12 unit tests
+   - `tests/test_voice_summary.py` -- 19 unit tests
+   - `tests/test_connect_caller.py` -- 6 unit tests
+   - `tests/test_nova_connect_handler.py` -- 10 unit tests
+   - `tests/test_critical_escalation_integration.py` -- 8 integration tests
+   - `tests/test_voice_e2e_manual.py` -- 20 comprehensive E2E tests
+   - **Total: 104 tests passing** (75 new + 29 existing)
+
+### Documentation updated
+
+9. Files updated:
+   - `README.md` -- added voice escalation section, updated pipeline diagram, env vars, artifacts, test count
+   - `AGENTS.md` -- updated architecture, directories, artifacts, env vars
+   - `AWS_PERMISSIONS_GUIDE.md` -- added Connect/Lex IAM permissions
+   - `EVALUATION_GUIDE.md` -- added voice escalation demo phase
+   - `project_context.md` -- rewritten to match current architecture
+   - `.env.example` -- created with all env vars documented
+
+---
+
+## Implemented on 2026-03-13: Jury Parallelization & Convergence Guard
 
 1. Jury deliberation parallelization
 - File: `Agent_Jury/jury_orchestrator.py`
@@ -29,47 +103,7 @@ Last updated: 2026-03-13
     decision is forced to `REQUIRE_APPROVAL`
     with policy name `convergence_guard_require_approval`.
 
-## Tests added/updated
-
-1. Added: `tests/test_jury_orchestrator_logic.py`
-- Validates repo resolution from `SERVICE_REPO_MAP`.
-- Validates metadata override precedence.
-- Validates timeout isolation behavior for slow juror.
-
-2. Updated: `tests/test_governance_gate_logic.py`
-- Added `test_evaluate_forces_approval_when_convergence_disagrees`.
-
-## Documentation updated
-
-1. `README.md`
-- Added March 13 update notes.
-- Documented webhook metadata override payload.
-- Added `SERVICE_REPO_MAP` env var documentation.
-- Updated test count to 48.
-
-2. `IMPLEMENTATION_PLAN.md`
-- Added March 13 delta section with implemented changes and verification results.
-
 ## Sanity checks run
 
-1. Targeted:
-- `python -m unittest tests.test_jury_orchestrator_logic tests.test_governance_gate_logic -v`
-
-2. Full:
-- `python -m unittest discover -s tests -v`
-- Result: `48 tests`, `OK`.
-
-## Additional session state saved
-
-1. Environment bootstrap file
-- Added `.env` at project root with required runtime keys and safe local defaults.
-- Includes new `SERVICE_REPO_MAP` example entry for `checkout-service`.
-
-2. Runbook commands shared with user
-- Web app run (local): `uvicorn api.server:app --host 0.0.0.0 --port 8082 --env-file .env`
-- Incident cleanup commands referenced from README:
-  - `Remove-Item history.db -Force -ErrorAction SilentlyContinue`
-  - `Remove-Item plans -Recurse -Force -ErrorAction SilentlyContinue`
-- Test commands referenced from README:
-  - `python -m unittest discover -s tests -v`
-  - `python -m evaluation --list|--scenario 1|--domain oom|--all`
+1. Full test suite: `python -m pytest tests/ -v` -- 104 tests pass
+2. Pre-existing failures (4 tests requiring `strands` SDK) unchanged

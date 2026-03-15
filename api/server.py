@@ -26,6 +26,9 @@ from botocore.config import Config
 from agents.pir_generator import generate_pir
 from api.history_db import get_incident_db
 from api.slack_notifier import SlackNotifier
+from api.escalation_policy import EscalationPolicy
+from api.voice_summary import build_briefing_script, build_system_prompt
+from api.connect_caller import ConnectCaller
 from governance.gate import GovernanceGate
 from governance.audit_log import AuditLog
 from governance.report import generate_governance_report
@@ -117,6 +120,8 @@ notifier = SlackNotifier(use_mock=USE_MOCK)
 k8s = KubernetesActions(use_mock=USE_MOCK)
 executor = RemediationExecutor(k8s)
 gate = GovernanceGate(executor)
+escalation_policy = EscalationPolicy()
+connect_caller = ConnectCaller(use_mock=USE_MOCK)
 
 # Mount dashboard if it exists
 dashboard_dir = Path(__file__).parent.parent / "dashboard"
@@ -146,6 +151,114 @@ def _load_validation_summary(report_path: str) -> dict:
     except Exception as exc:
         logger.warning(f"Failed to load validation summary from {validation_path}: {exc}")
         return {}
+
+
+def _try_voice_escalation(
+    result: dict,
+    service_name: str,
+    alert_name: str,
+    gov_status: str,
+    proposed_action: dict,
+):
+    """Evaluate escalation policy and attempt outbound call if critical.
+
+    Falls back to Slack critical escalation if the call fails.
+    Ghost Mode is preserved — the call informs the engineer and asks
+    for verbal approval, which routes through the same governance gate.
+    """
+    incident_id = result["incident_id"]
+    severity = result.get("severity", "")
+    risk_score = result.get("risk_score", 0)
+    domain = result.get("domain", "")
+    analysis = result.get("result", "")
+
+    esc = escalation_policy.evaluate(
+        severity=severity,
+        risk_score=risk_score,
+        governance_decision=result.get("governance_decision", ""),
+        governance_status=gov_status,
+    )
+
+    if not esc.is_critical:
+        return
+
+    logger.info(f"Incident {incident_id}: CRITICAL — initiating voice escalation")
+
+    # Build the voice briefing and system prompt
+    briefing = build_briefing_script(
+        incident_id=incident_id,
+        service_name=service_name,
+        severity=severity,
+        domain=domain,
+        analysis=analysis,
+        proposed_action=proposed_action,
+    )
+    system_prompt = build_system_prompt(
+        incident_id=incident_id,
+        service_name=service_name,
+        severity=severity,
+        domain=domain,
+        analysis=analysis,
+        proposed_action=proposed_action,
+        alert_name=alert_name,
+    )
+
+    # Attempt outbound call
+    call_result = connect_caller.place_call(
+        incident_id=incident_id,
+        briefing_script=briefing,
+        system_prompt=system_prompt,
+        severity=severity,
+        service_name=service_name,
+    )
+
+    if call_result.success:
+        logger.info(
+            f"Incident {incident_id}: outbound call placed "
+            f"(contact_id={call_result.contact_id})"
+        )
+    else:
+        logger.warning(
+            f"Incident {incident_id}: outbound call failed "
+            f"({call_result.error}), falling back to Slack critical escalation"
+        )
+
+    # Always send Slack critical escalation (as fallback or supplement)
+    notifier.send_critical_escalation(
+        incident_id=incident_id,
+        service_name=service_name,
+        severity=severity,
+        domain=domain,
+        analysis=analysis[:500],
+        proposed_action=proposed_action if proposed_action else {},
+        escalation_reasons=esc.reasons,
+        call_failed=not call_result.success,
+    )
+
+    # Persist escalation metadata as an artifact
+    _save_escalation_artifact(incident_id, esc, call_result, briefing)
+
+
+def _save_escalation_artifact(escalation_id, esc_result, call_result, briefing):
+    """Save voice escalation metadata to plans/{incident_id}/."""
+    try:
+        artifact_dir = Path(__file__).parent.parent / "plans" / escalation_id
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        artifact = {
+            "is_critical": esc_result.is_critical,
+            "reasons": esc_result.reasons,
+            "severity": esc_result.severity,
+            "risk_score": esc_result.risk_score,
+            "call_placed": call_result.success,
+            "contact_id": call_result.contact_id,
+            "call_error": call_result.error,
+            "briefing_script": briefing,
+        }
+        path = artifact_dir / "voice_escalation.json"
+        path.write_text(json.dumps(artifact, indent=2), encoding="utf-8")
+        logger.info(f"Voice escalation artifact saved: {path}")
+    except Exception as e:
+        logger.warning(f"Failed to save escalation artifact: {e}")
 
 
 def trigger_agent_loop(payload: AlertPayload):
@@ -188,6 +301,15 @@ def trigger_agent_loop(payload: AlertPayload):
         logger.info(
             f"Incident {result['incident_id']}: governance={result.get('governance_decision')} "
             f"risk={result.get('risk_score')}/100 status={db_status}"
+        )
+
+        # ── Voice escalation for critical incidents ─────────────────
+        _try_voice_escalation(
+            result=result,
+            service_name=payload.service_name,
+            alert_name=payload.alert_name,
+            gov_status=gov_status,
+            proposed_action=proposed_action,
         )
 
     except Exception as e:

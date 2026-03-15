@@ -10,6 +10,9 @@ Built for Enterprise scale incident management using Amazon Nova foundational mo
 
 ## Latest Release Features
 
+- **Critical Incident Voice Escalation via Amazon Connect**: Outbound phone calls to on-call engineers for critical incidents (P1 / high risk score), powered by Amazon Nova real-time conversation through a Lex + Lambda bridge. Verbal approval triggers remediation through the existing governance gate. Falls back to Slack critical escalation if the call fails.
+- **Escalation Policy Engine**: Configurable severity and risk-score thresholds determine which incidents trigger voice escalation vs standard Slack notification. Auto-executed incidents are automatically skipped.
+- **Slack Critical Escalation**: High-visibility fallback Slack messages with call status, escalation reasons, and approval buttons — sent alongside or instead of the phone call.
 - **Amazon Nova Sonic Integration**: Live, real-time simulated voice calls via AWS Bedrock for human-in-the-loop action approval.
 - **Unified Telemetry Dashboard**: Complete, colorized logging of all War Room, Jury, and API operations piped directly into a single `novaops_system.log` stream.
 - **Streamlined Evaluation Engine**: A refined 4-script demonstration framework executing automated system orchestration, mock scenario injection, and live failure testing.
@@ -97,8 +100,11 @@ Alert (POST /webhook/pagerduty)
 │  EXECUTION & APPROVAL                                    │
 │                                                          │
 │  ALLOW_AUTO ───────► Auto-Remediate (K8s API)            │
-│  REQUIRE_APPROVAL ─► Amazon Nova Sonic Phone Call        │
-│                      (Real-time Voice/Text Fallback)     │
+│  REQUIRE_APPROVAL ─► Escalation Policy Check             │
+│    ├─ CRITICAL ────► Amazon Connect Outbound Call         │
+│    │                 (Nova real-time voice via Lex/Lambda)│
+│    │                 + Slack Critical Escalation          │
+│    └─ NORMAL ──────► Slack Ghost Mode Notification       │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -172,6 +178,50 @@ Every incident generates a complete, ordered audit trail in `plans/{incident_id}
 
 ---
 
+## Voice Escalation (Amazon Connect + Nova Real-Time)
+
+Critical incidents trigger an outbound phone call to the on-call engineer via Amazon Connect. The call is powered by a Nova real-time conversation through a Lex V2 bot backed by a Lambda function.
+
+**How it works:**
+
+```text
+trigger_agent_loop() completes investigation
+  → escalation_policy.evaluate(severity, risk_score)
+    → if critical:
+        1. build_briefing_script()   — ≤60-word TTS script
+        2. build_system_prompt()     — full Nova conversation context
+        3. connect_caller.place_call() → Amazon Connect dials on-call
+           → Contact Flow plays briefing via Polly TTS
+           → Lex bot captures engineer's speech
+           → Lambda calls bedrock.converse() with Nova
+           → Nova detects [ACTION_APPROVED] / [ACTION_REJECTED]
+           → Lambda POSTs to /api/incidents/{id}/approve
+        4. Slack critical escalation sent (supplement or fallback)
+        5. voice_escalation.json artifact saved to plans/{id}/
+```
+
+**Escalation criteria (configurable via env vars):**
+
+- Severity in `CRITICAL_SEVERITY_LEVELS` (default: `P1`)
+- Risk score >= `CRITICAL_RISK_SCORE_THRESHOLD` (default: `85`)
+- Either condition triggers escalation; auto-executed incidents are skipped
+
+**Ghost Mode preserved:** The phone call informs the engineer and asks for verbal approval. Approval flows through `GovernanceGate.approve_and_execute()` with `HUMAN_OVERRIDE` logged to the audit trail — same path as dashboard or Slack approval.
+
+**Fallback safety:** If the outbound call fails (Connect error, no answer, misconfigured), Slack critical escalation fires with `call_failed=True` so the incident is never dropped.
+
+**AWS setup required for production:**
+
+1. Create an Amazon Connect instance with an outbound phone number
+2. Create a Contact Flow that plays the `briefing_script` attribute via Polly, then routes to a Lex V2 bot
+3. Create a Lex V2 bot with a `VoiceEscalation` intent, fulfillment pointed at the Lambda
+4. Deploy `lambda_handlers/nova_connect_handler.py` as an AWS Lambda function
+5. Set env vars: `CONNECT_INSTANCE_ID`, `CONNECT_CONTACT_FLOW_ID`, `CONNECT_SOURCE_PHONE`, `ONCALL_PHONE_NUMBER`, `NOVAOPS_VOICE_USE_MOCK=false`
+
+**Mock mode:** Set `NOVAOPS_VOICE_USE_MOCK=true` (default) to log calls instead of dialing. All escalation logic runs — only the Connect API call is skipped.
+
+---
+
 ## Repository Layout
 
 ```
@@ -181,14 +231,15 @@ Agent_Jury/     Jury pipeline — 4 specialist jurors + Judge + Escalation Gate
 agent/          nova_client.py — Bedrock client used by Jury jurors
 pipeline/       convergence.py — War Room vs Jury agreement check
 aggregator/     Log, metric, Kubernetes, and GitHub data fetchers (live + mock)
-api/            FastAPI server, dual-backend history DB (SQLite local / DynamoDB Docker), Slack notifier, PagerDuty webhook
+api/            FastAPI server, history DB, Slack notifier, escalation policy, voice summary, Connect caller
+lambda_handlers/ Lambda function for Lex V2 fulfillment — bridges phone audio to Nova real-time
 governance/     GovernanceGate, PolicyEngine, AuditLog, report generator
 tools/          Tool wrappers, RemediationExecutor, knowledge retrieval
 evaluation/     15 scenario harness covering 6 failure domains
 skills/         Domain playbooks (oom, traffic_surge, deadlock, config_drift, ...)
 runbooks/       Learned PIR content for RAG
 plans/          Generated investigation artifacts (git-ignored)
-tests/          37 unit tests
+tests/          84 unit + integration tests
 ```
 
 ---
@@ -301,6 +352,16 @@ In Docker, LocalStack initialises the DynamoDB table on first use (lazy init —
 | `NOVAOPS_LOG_PATH` | `novaops.log` | Path to the unified log file read by the dashboard live terminal |
 | `HISTORY_DB_PATH` | `history.db` | Override SQLite file path (local only) |
 | `SERVICE_REPO_MAP` | — | JSON map for jury GitHub context. Example: `{"checkout-service":{"owner":"acme-inc","repo":"checkout-api"}}` |
+| **Voice Escalation** | | |
+| `NOVAOPS_VOICE_ESCALATION_ENABLED` | `true` | Master switch for critical voice escalation |
+| `NOVAOPS_VOICE_USE_MOCK` | `true` | Mock mode — logs calls instead of dialing |
+| `CRITICAL_SEVERITY_LEVELS` | `P1` | Comma-separated severities that trigger voice escalation |
+| `CRITICAL_RISK_SCORE_THRESHOLD` | `85` | Risk score at or above which voice escalation triggers |
+| `CONNECT_INSTANCE_ID` | — | Amazon Connect instance ID |
+| `CONNECT_CONTACT_FLOW_ID` | — | Contact Flow ID for voice escalation |
+| `CONNECT_SOURCE_PHONE` | — | Outbound caller ID (E.164, e.g. `+15551234567`) |
+| `ONCALL_PHONE_NUMBER` | — | On-call engineer's phone number (E.164) |
+| `NOVAOPS_API_CALLBACK_URL` | `http://localhost:8082` | URL the Lambda calls to approve incidents |
 
 ---
 
@@ -321,7 +382,7 @@ Scenarios cover: `oom`, `traffic_surge`, `deadlock`, `config_drift`, `dependency
 
 ```bash
 python -m unittest discover -s tests -v
-# 48 tests
+# 84 tests (unit + integration)
 ```
 
 ---
@@ -341,3 +402,4 @@ Each investigation writes to `plans/{incident_id}/`:
 | `trace.json` | Failure metadata (if investigation failed) |
 | `findings/*.json` | Per-agent structured findings |
 | `plan.md` | Investigation plan (updated to COMPLETED) |
+| `voice_escalation.json` | Voice escalation metadata — call status, briefing script, reasons |
