@@ -382,7 +382,7 @@ Scenarios cover: `oom`, `traffic_surge`, `deadlock`, `config_drift`, `dependency
 
 ```bash
 python -m unittest discover -s tests -v
-# 84 tests (unit + integration)
+# 123 tests (unit + integration)
 ```
 
 ---
