@@ -110,8 +110,10 @@ Your Goal:
 
 Rules:
 - Speak casually and conversationally, like a real phone call. Do not use markdown.
+- Be robust: If the user tries to talk about unrelated topics, politely steer the conversation back to the incident and the remediation plan.
 - If they ask for details, explain it simply.
-- If they explicitly say "I approve", "go ahead", or "yes do it", you MUST output the exact token: [ACTION_APPROVED]
+- If they explicitly approve or say yes (e.g., "I approve", "go ahead", "yes do it", "sounds good"), you MUST output the exact token: [ACTION_APPROVED]
+- If they reject, say no, ask to hang up, or abort (e.g., "no", "reject", "hang up", "stop", "abort"), you MUST output the exact token: [ACTION_REJECTED]
 - Keep your responses under 3 sentences so it feels like a real voice conversation.
 """
 
@@ -148,6 +150,8 @@ Rules:
             if wav_bytes is None:
                 # Text fallback if audio is not working
                 fallback_cmd = input("\n🎙️  You (text fallback): ")
+                if not fallback_cmd.strip():
+                    fallback_cmd = "(silence)"
                 messages.append({"role": "user", "content": [{"text": fallback_cmd}]})
             else:
                 # Send the audio stream as an attachment block in Converse API
@@ -194,6 +198,14 @@ Rules:
                 
                 print(f"\n🔊 Nova Sonic: Initiating remediation sequence now. Goodbye!")
                 trigger_approval(incident_id)
+                print("\n📵 Call disconnected.")
+                break
+            elif "[ACTION_REJECTED]" in reply_text:
+                clean_reply = reply_text.replace("[ACTION_REJECTED]", "").strip()
+                if clean_reply:
+                    print(f"\n🔊 Nova Sonic: {clean_reply}")
+                
+                print(f"\n🔊 Nova Sonic: Understood, remediation aborted. Goodbye!")
                 print("\n📵 Call disconnected.")
                 break
             else:
