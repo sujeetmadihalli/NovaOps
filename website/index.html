@@ -54,19 +54,14 @@
             <div class="term-dots"><i></i><i></i><i></i></div>
             <span>novaops &mdash; live</span>
           </div>
+          <div class="term-tabs" id="term-tabs">
+            <button class="term-tab active" data-scenario="oom">OOM Crash</button>
+            <button class="term-tab" data-scenario="surge">Traffic Surge</button>
+            <button class="term-tab" data-scenario="drift">Config Drift</button>
+            <button class="term-tab" data-scenario="cascade">Cascading Failure</button>
+          </div>
           <div class="term-body" id="term">
-            <p><s-t>13:42:01</s-t> <s-b>webhook</s-b> OOMKilled on checkout-service</p>
-            <p class="d1"><s-t>13:42:03</s-t> <s-p>triage</s-p> domain=oom severity=<s-r>P1</s-r></p>
-            <p class="d2"><s-t>13:42:05</s-t> <s-p>war-room</s-p> dispatching 4 analysts...</p>
-            <p class="d3"><s-t>13:42:11</s-t> <s-p>root-cause</s-p> heap usage 97%, leak in /api/v2/cart</p>
-            <p class="d4"><s-t>13:42:14</s-t> <s-o>jury</s-o> 4 jurors deliberating (blind context)</p>
-            <p class="d5"><s-t>13:42:19</s-t> <s-o>jury</s-o> verdict: restart_pods (conf: 0.88)</p>
-            <p class="d6"><s-t>13:42:20</s-t> <s-g>converge</s-g> WAR ROOM + JURY AGREE &uarr; +0.15</p>
-            <p class="d7"><s-t>13:42:20</s-t> <s-g>governance</s-g> risk=90 &rarr; REQUIRE_APPROVAL</p>
-            <p class="d8"><s-t>13:42:21</s-t> <s-r>escalation</s-r> CRITICAL &mdash; placing outbound call</p>
-            <p class="d9"><s-t>13:42:24</s-t> <s-y>nova-voice</s-y> "Hey, checkout-service is OOM..."</p>
-            <p class="d10"><s-t>13:42:38</s-t> <s-y>nova-voice</s-y> engineer: "go ahead, restart it"</p>
-            <p class="d11"><s-t>13:42:39</s-t> <s-g>approved</s-g> restart_pods executed</p>
+            <!-- Populated by JavaScript -->
           </div>
         </div>
         <div class="hero-badge-float">

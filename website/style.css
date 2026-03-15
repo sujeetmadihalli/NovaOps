@@ -103,6 +103,23 @@ a{color:inherit;text-decoration:none}
 .term-dots i:first-child{background:#ef4444}
 .term-dots i:nth-child(2){background:#eab308}
 .term-dots i:last-child{background:#22c55e}
+
+/* Tabs */
+.term-tabs{
+  display:flex;align-items:flex-end;gap:2px;
+  background:var(--surface2);border-bottom:1px solid var(--border);
+  padding:0 12px;
+}
+.term-tab{
+  padding:8px 14px;border:none;background:transparent;
+  font-family:var(--font);font-size:12px;font-weight:600;
+  color:var(--tx-dim);cursor:pointer;transition:.2s var(--ease);
+  border-bottom:2px solid transparent;margin-bottom:-1px;
+}
+.term-tab:hover{color:var(--tx)}
+.term-tab.active{color:var(--tx-hi);border-bottom-color:var(--accent)}
+
+/* Body */
 .term-body{padding:18px 20px;font-family:var(--mono);font-size:12px;line-height:2;overflow:hidden;min-height:320px}
 .term-body p{opacity:0;animation:tline .35s forwards}
 .term-body .d1{animation-delay:.6s} .term-body .d2{animation-delay:1.2s}
