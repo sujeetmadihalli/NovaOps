@@ -1,4 +1,4 @@
-# NovaOps v2
+# NovaOps
 
 **Autonomous multi-agent SRE war room powered by Amazon Nova 2 Lite — with independent jury validation.**
 
